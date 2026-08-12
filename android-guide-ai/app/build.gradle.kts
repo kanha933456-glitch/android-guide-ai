@@ -5,6 +5,7 @@ plugins {
 
 android { namespace = "com.guideai.app"; compileSdk = 35
     defaultConfig { applicationId = "com.guideai.app"; minSdk = 26; targetSdk = 35; versionCode = 1; versionName = "0.1.0"; buildConfigField("String", "GUIDE_API_URL", "\"${project.findProperty("guideApiUrl") ?: ""}\"") }
+    buildFeatures { buildConfig = true }
 }
 
 kotlin { jvmToolchain(17) }
