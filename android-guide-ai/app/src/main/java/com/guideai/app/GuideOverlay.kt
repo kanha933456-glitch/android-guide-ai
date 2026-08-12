@@ -29,7 +29,7 @@ object GuideOverlay {
             setOnClickListener {
                 text = "Thinking…"
                 CoroutineScope(Dispatchers.Main).launch {
-                    GuideApi.explain("Hindi", screenText).onSuccess { guidance.text = it }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
+              GuideApi.explain("Hindi", screenText).onSuccess { guidance.text = it }.onFailure { guidance.text = "Error: ${it.message}" }      
                     text = "Explain again"
                 }
             }
