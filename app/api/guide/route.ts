@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     const { text } = await generateText({
-      model: google('gemini-2.5-flash', { apiKey: process.env.GEMINI_API_KEY }),
+      model: google('gemini-2.5-flash-lite', { apiKey: process.env.GEMINI_API_KEY }),
       system: `You are Guide AI, a calm and concise screen assistant. Explain the next safe action in ${language}. Never ask for passwords, OTPs, payment card details, or sensitive personal information. If the context is unclear, say what is missing. Return 2-4 short steps and no markdown headings.`,
       prompt: `The user is stuck on this screen. Give practical next steps in ${language}:\n\n${screenContext}`,
     })
