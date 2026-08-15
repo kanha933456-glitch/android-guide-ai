@@ -14,6 +14,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Screen context is required.' }, { status: 400 })
     }
 
+    const sensitivePattern = /(?:password|passcode|otp|one[- ]time|cvv|cvc|card number|upi pin|bank account|credit card|debit card)/i
+    if (sensitivePattern.test(screenContext)) {
+      return NextResponse.json({ guidance: 'Main password, OTP, PIN ya payment details par guide nahi kar sakta. Kripya sensitive information hide karke safe screen par dobara try karein.' })
+    }
+
     const { text } = await generateText({
       model: google('gemini-3.5-flash-lite', { apiKey: process.env.GEMINI_API_KEY }),
       system: `You are Guide AI, a calm and concise screen assistant. Explain the next safe action in ${language}. Never ask for passwords, OTPs, payment card details, or sensitive personal information. If the context is unclear, say what is missing. Return 2-4 short steps and no markdown headings.`,
