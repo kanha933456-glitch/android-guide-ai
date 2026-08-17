@@ -1,9 +1,10 @@
-'use client'
+  'use client'
 
 import { useState } from 'react'
 import {
   Activity,
   ArrowRight,
+  ArrowUp,
   Bell,
   Check,
   ChevronDown,
@@ -36,6 +37,32 @@ export default function Page() {
   const [voice, setVoice] = useState(true)
   const [guidance, setGuidance] = useState('')
   const [loadingGuidance, setLoadingGuidance] = useState(false)
+  const [question, setQuestion] = useState('')
+  const [history, setHistory] = useState<string[]>([])
+
+  async function askGuide(event?: React.FormEvent) {
+    event?.preventDefault()
+    if (!question.trim() || loadingGuidance) return
+    setActive(true)
+    setAnalysis(true)
+    setLoadingGuidance(true)
+    try {
+      const response = await fetch('/api/guide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language, screenContext: question.trim() }),
+      })
+      const data = await response.json()
+      const answer = data.guidance || 'Mujhe thoda aur context chahiye. Kripya apna sawaal dobara likhein.'
+      setGuidance(answer)
+      setHistory((items) => [question.trim(), ...items].slice(0, 5))
+      setQuestion('')
+    } catch {
+      setGuidance('Guide AI se connection nahi ho paaya. Thodi der baad dobara try karein.')
+    } finally {
+      setLoadingGuidance(false)
+    }
+  }
 
   async function activateGuide() {
     setActive(true)
@@ -123,6 +150,19 @@ export default function Page() {
 
           <div className="mt-5 grid gap-5 md:grid-cols-3"><StatCard icon={<ShieldCheck />} label="Privacy first" value="On-device ready" /><StatCard icon={<CircleHelp />} label="Guidance used" value="0 sessions" /><StatCard icon={<Settings2 />} label="Permissions" value="2 to review" /></div>
 
+          <div className="mt-5 rounded-3xl border border-border bg-card p-5 sm:p-6">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-primary"><CircleHelp className="size-4" /></div>
+              <div><h2 className="text-sm font-semibold">Ask Guide AI yourself</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Stuck somewhere? Apna sawaal likhiye — main aapko {language} mein simple steps bataunga.</p></div>
+            </div>
+            <form onSubmit={askGuide} className="flex items-end gap-2">
+              <label htmlFor="guide-question" className="sr-only">Ask Guide AI a question</label>
+              <textarea id="guide-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Jaise: Is page par mujhe next kya karna hai?" rows={2} maxLength={1000} className="min-h-12 flex-1 resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm leading-5 outline-none placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/20" />
+              <button type="submit" disabled={!question.trim() || loadingGuidance} className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send question"><ArrowUp className="size-5" /></button>
+            </form>
+            {history.length > 0 && <div className="mt-4 border-t border-border pt-4"><p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Recent questions</p><div className="flex flex-wrap gap-2">{history.map((item, index) => <span key={`${item}-${index}`} className="rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">{item}</span>)}</div></div>}
+          </div>
+
           {analysis && <div className="mt-5 flex items-start gap-4 rounded-2xl border border-primary/20 bg-accent/40 p-5"><div className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"><Sparkles className="size-4" /></div><div className="flex-1"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">A tip from Guide AI</p><button onClick={() => setAnalysis(false)} className="text-muted-foreground hover:text-foreground" aria-label="Dismiss tip"><X className="size-4" /></button></div><p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">{guidance || `I can see your current screen. When you&apos;re ready, I&apos;ll explain the next action in simple ${language}.`}</p><button className="mt-3 text-xs font-semibold text-primary hover:underline">Review permissions <ArrowRight className="ml-1 inline size-3" /></button></div></div>}
         </section>
       </div>
@@ -136,4 +176,4 @@ function NavItem({ icon, label, active = false }: { icon: React.ReactNode; label
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4"><div className="grid size-9 place-items-center rounded-xl bg-muted text-muted-foreground [&>svg]:size-4">{icon}</div><div><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{value}</p></div></div>
-}
+                  }
