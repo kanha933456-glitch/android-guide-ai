@@ -25,7 +25,12 @@ object GuideOverlay {
         val protected = screenText.contains(Regex("password|otp|pin|cvv|card number|bank", RegexOption.IGNORE_CASE))
         if (protected) return
         lateinit var speaker: TextToSpeech
-        speaker = TextToSpeech(context) { status -> if (status == TextToSpeech.SUCCESS) speaker.language = Locale("hi", "IN") }
+        speaker = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                speaker.language = Locale("hi", "IN")
+                speaker.setSpeechRate(0.75f)
+            }
+        }
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val card = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(28, 22, 28, 22); setBackgroundColor(Color.rgb(22, 29, 39)) }
         card.addView(TextView(context).apply { text = "Guide AI is ready"; setTextColor(Color.rgb(247, 185, 85)); textSize = 18f })
@@ -40,8 +45,20 @@ object GuideOverlay {
                 if (query.isEmpty()) return@setOnClickListener
                 text = "Thinking…"
                 CoroutineScope(Dispatchers.Main).launch {
-                    GuideApi.explain("Hindi", "$screenText\\nUser question: $query").onSuccess { answer -> guidance.text = answer; speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide") }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
+                    GuideApi.explain("Hindi", "$screenText\nUser question: $query").onSuccess { answer -> guidance.text = answer; speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide") }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
                     text = "Ask again"
+                }
+            }
+        })
+        card.addView(Button(context).apply {
+            text = "Analyze screenshot"
+            setOnClickListener {
+                text = "Analyzing…"
+                CoroutineScope(Dispatchers.Main).launch {
+                    val image = ScreenCapture.capture(context)
+                    if (image == null) guidance.text = "Pehle app me 'Allow Screen Capture' permission dein."
+                    else GuideApi.explainVision("Hindi", image, question.text.toString()).onSuccess { answer -> guidance.text = answer; speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "vision") }.onFailure { guidance.text = "Visual guidance connect nahi ho paayi." }
+                    text = "Analyze again"
                 }
             }
         })
