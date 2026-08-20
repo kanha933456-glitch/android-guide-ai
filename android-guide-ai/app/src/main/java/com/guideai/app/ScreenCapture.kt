@@ -14,22 +14,26 @@ import java.io.ByteArrayOutputStream
 
 object ScreenCapture {
     private var projection: MediaProjection? = null
+    private var isReady = false
 
     fun start(context: Context, resultCode: Int, data: Intent) {
         val serviceIntent = Intent(context, CaptureService::class.java)
         context.startForegroundService(serviceIntent)
         val manager = context.getSystemService(MediaProjectionManager::class.java)
         projection = manager.getMediaProjection(resultCode, data)
+        Thread.sleep(500)
+        isReady = true
     }
 
     fun capture(context: Context): String? {
+        if (!isReady) return null
         val activeProjection = projection ?: return null
         val metrics = DisplayMetrics()
         (context.getSystemService(WindowManager::class.java)).defaultDisplay.getRealMetrics(metrics)
         val reader = ImageReader.newInstance(metrics.widthPixels, metrics.heightPixels, PixelFormat.RGBA_8888, 2)
         val virtualDisplay = activeProjection.createVirtualDisplay("Guide AI", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, reader.surface, null, null)
         return try {
-            Thread.sleep(150)
+            Thread.sleep(300)
             val image = reader.acquireLatestImage() ?: return null
             val plane = image.planes[0]
             val bitmap = Bitmap.createBitmap(plane.rowStride / plane.pixelStride, metrics.heightPixels, Bitmap.Config.ARGB_8888)
@@ -47,6 +51,7 @@ object ScreenCapture {
     fun stop(context: Context) {
         projection?.stop()
         projection = null
+        isReady = false
         context.stopService(Intent(context, CaptureService::class.java))
     }
 }
