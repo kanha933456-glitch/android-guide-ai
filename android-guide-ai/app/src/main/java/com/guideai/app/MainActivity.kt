@@ -20,7 +20,7 @@ class MainActivity : AppCompatActivity() {
                 ScreenCapture.start(this, result.resultCode, result.data!!)
                 Toast.makeText(this, "Screen capture ready!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                Toast.makeText(this, "Screen capture setup failed: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -41,6 +41,23 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
+        })
+        layout.addView(TextView(this).apply { text = "Language"; textSize = 16f })
+        val languages = arrayOf("Hindi", "English", "اردو", "বাংলা")
+        val languageSpinner = android.widget.Spinner(this).apply {
+            adapter = android.widget.ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, languages)
+            setSelection(languages.indexOf(GuideSettings.language(this@MainActivity)).coerceAtLeast(0))
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                    GuideSettings.setLanguage(this@MainActivity, languages[position])
+                }
+            }
+        }
+        layout.addView(languageSpinner)
+        layout.addView(Button(this).apply {
+            text = "Turn Guide AI off"
+            setOnClickListener { GuideSettings.setActive(this@MainActivity, false); text = "Guide AI is off" }
         })
         setContentView(layout)
     }
