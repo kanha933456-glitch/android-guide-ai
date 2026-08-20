@@ -8,6 +8,7 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
@@ -15,7 +16,12 @@ class MainActivity : AppCompatActivity() {
 
     private val captureRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            ScreenCapture.start(this, result.resultCode, result.data!!)
+            try {
+                ScreenCapture.start(this, result.resultCode, result.data!!)
+                Toast.makeText(this, "Screen capture ready!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Screen capture setup failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -28,8 +34,12 @@ class MainActivity : AppCompatActivity() {
         layout.addView(Button(this).apply {
             text = "Allow Screen Capture (one time)"
             setOnClickListener {
-                val manager = getSystemService(MediaProjectionManager::class.java)
-                captureRequest.launch(manager.createScreenCaptureIntent())
+                try {
+                    val manager = getSystemService(MediaProjectionManager::class.java)
+                    captureRequest.launch(manager.createScreenCaptureIntent())
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         })
         setContentView(layout)
