@@ -8,10 +8,16 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
-    private val captureRequest = 4201
+
+    private val captureRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            ScreenCapture.start(this, result.resultCode, result.data!!)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,12 +25,13 @@ class MainActivity : AppCompatActivity() {
         layout.addView(TextView(this).apply { text = "Guide AI\n\nEnable screen access and overlay permission to get step-by-step help in other apps."; textSize = 20f })
         layout.addView(Button(this).apply { text = "Open Accessibility Settings"; setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } })
         layout.addView(Button(this).apply { text = "Allow Floating Guide Button"; setOnClickListener { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) } })
-        layout.addView(Button(this).apply { text = "Allow Screen Capture (one time)"; setOnClickListener { val manager = getSystemService(MediaProjectionManager::class.java); startActivityForResult(manager.createScreenCaptureIntent(), captureRequest) } })
+        layout.addView(Button(this).apply {
+            text = "Allow Screen Capture (one time)"
+            setOnClickListener {
+                val manager = getSystemService(MediaProjectionManager::class.java)
+                captureRequest.launch(manager.createScreenCaptureIntent())
+            }
+        })
         setContentView(layout)
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == captureRequest && resultCode == RESULT_OK && data != null) ScreenCapture.start(this, resultCode, data)
     }
 }
