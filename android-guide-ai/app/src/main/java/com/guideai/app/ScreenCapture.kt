@@ -1,5 +1,6 @@
 package com.guideai.app
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
@@ -14,12 +15,14 @@ import java.io.ByteArrayOutputStream
 object ScreenCapture {
     private var projection: MediaProjection? = null
 
-    fun start(context: android.content.Context, resultCode: Int, data: Intent) {
+    fun start(context: Context, resultCode: Int, data: Intent) {
+        val serviceIntent = Intent(context, CaptureService::class.java)
+        context.startForegroundService(serviceIntent)
         val manager = context.getSystemService(MediaProjectionManager::class.java)
         projection = manager.getMediaProjection(resultCode, data)
     }
 
-    fun capture(context: android.content.Context): String? {
+    fun capture(context: Context): String? {
         val activeProjection = projection ?: return null
         val metrics = DisplayMetrics()
         (context.getSystemService(WindowManager::class.java)).defaultDisplay.getRealMetrics(metrics)
@@ -39,5 +42,11 @@ object ScreenCapture {
             virtualDisplay.release()
             reader.close()
         }
+    }
+
+    fun stop(context: Context) {
+        projection?.stop()
+        projection = null
+        context.stopService(Intent(context, CaptureService::class.java))
     }
 }
