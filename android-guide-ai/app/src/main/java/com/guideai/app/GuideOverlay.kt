@@ -20,20 +20,22 @@ object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var overlay: View? = null
 
-    fun show(context: Context, screenText: String) {
+    fun show(context: Context, screenText: String, stuck: Boolean = false) {
         if (overlay != null) return
         val protected = screenText.contains(Regex("password|otp|pin|cvv|card number|bank", RegexOption.IGNORE_CASE))
         if (protected) return
         lateinit var speaker: TextToSpeech
+        val language = GuideSettings.language(context)
+        val locale = when (language) { "English" -> Locale.US; "اردو" -> Locale("ur", "PK"); "বাংলা" -> Locale("bn", "BD"); else -> Locale("hi", "IN") }
         speaker = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                speaker.language = Locale("hi", "IN")
+                speaker.language = locale
                 speaker.setSpeechRate(0.75f)
             }
         }
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val card = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(28, 22, 28, 22); setBackgroundColor(Color.rgb(22, 29, 39)) }
-        card.addView(TextView(context).apply { text = "Guide AI is ready"; setTextColor(Color.rgb(247, 185, 85)); textSize = 18f })
+        card.addView(TextView(context).apply { text = if (stuck) "Guide AI noticed you may be stuck" else "Guide AI is ready"; setTextColor(Color.rgb(247, 185, 85)); textSize = 18f })
         val guidance = TextView(context).apply { text = "Screen text captured safely. Tap below for Gemini guidance."; setTextColor(Color.WHITE); textSize = 14f }
         card.addView(guidance)
         val question = EditText(context).apply { hint = "Apna sawaal likhein"; setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY) }
@@ -45,7 +47,7 @@ object GuideOverlay {
                 if (query.isEmpty()) return@setOnClickListener
                 text = "Thinking…"
                 CoroutineScope(Dispatchers.Main).launch {
-                    GuideApi.explain("Hindi", "$screenText\nUser question: $query").onSuccess { answer -> guidance.text = answer; speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide") }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
+                    GuideApi.explain(language, "$screenText\nUser question: $query").onSuccess { answer -> guidance.text = answer; if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide") }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
                     text = "Ask again"
                 }
             }
@@ -57,7 +59,7 @@ object GuideOverlay {
                 CoroutineScope(Dispatchers.Main).launch {
                     val image = ScreenCapture.capture(context)
                     if (image == null) guidance.text = "Pehle app me 'Allow Screen Capture' permission dein."
-                    else GuideApi.explainVision("Hindi", image, question.text.toString()).onSuccess { answer -> guidance.text = answer; speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "vision") }.onFailure { guidance.text = "Visual guidance connect nahi ho paayi." }
+                    else GuideApi.explainVision(language, image, question.text.toString()).onSuccess { answer -> guidance.text = answer; if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "vision") }.onFailure { guidance.text = "Visual guidance connect nahi ho paayi." }
                     text = "Analyze again"
                 }
             }
@@ -67,7 +69,7 @@ object GuideOverlay {
             setOnClickListener {
                 text = "Thinking…"
                 CoroutineScope(Dispatchers.Main).launch {
-                    GuideApi.explain("Hindi", screenText).onSuccess { guidance.text = it; speaker.speak(it, TextToSpeech.QUEUE_FLUSH, null, "guide") }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
+                    GuideApi.explain(language, screenText).onSuccess { guidance.text = it; if (GuideSettings.voiceEnabled(context)) speaker.speak(it, TextToSpeech.QUEUE_FLUSH, null, "guide") }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
                     text = "Explain again"
                 }
             }
