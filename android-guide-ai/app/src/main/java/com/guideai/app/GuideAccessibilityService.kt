@@ -17,7 +17,7 @@ class GuideAccessibilityService : AccessibilityService() {
         collectText(root, visibleText)
         val context = visibleText.toString().trim().take(4000)
         val now = System.currentTimeMillis()
-        if (!GuideSettings.isActive(this) || context.isEmpty()) return
+        if (!GuideSettings.isActive(this) || !GuideSettings.hasConsent(this) || context.isEmpty()) return
         if (context == lastContext) sameScreenCount++ else sameScreenCount = 1
         val changed = context != lastContext
         val stuck = sameScreenCount >= 3
