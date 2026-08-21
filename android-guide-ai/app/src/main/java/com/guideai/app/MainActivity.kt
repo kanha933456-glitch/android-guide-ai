@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -42,23 +43,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
+        layout.addView(TextView(this).apply { text = "Privacy"; textSize = 16f })
+        layout.addView(CheckBox(this).apply { text = "I understand screen content is sent temporarily for guidance"; isChecked = GuideSettings.hasConsent(this@MainActivity); setOnCheckedChangeListener { _, checked -> GuideSettings.setConsent(this@MainActivity, checked) } })
         layout.addView(TextView(this).apply { text = "Language"; textSize = 16f })
         val languages = arrayOf("Hindi", "English", "اردو", "বাংলা")
-        val languageSpinner = android.widget.Spinner(this).apply {
-            adapter = android.widget.ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, languages)
-            setSelection(languages.indexOf(GuideSettings.language(this@MainActivity)).coerceAtLeast(0))
-            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                    GuideSettings.setLanguage(this@MainActivity, languages[position])
-                }
-            }
-        }
+        val languageSpinner = android.widget.Spinner(this).apply { adapter = android.widget.ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, languages); setSelection(languages.indexOf(GuideSettings.language(this@MainActivity)).coerceAtLeast(0)); onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener { override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit; override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) { GuideSettings.setLanguage(this@MainActivity, languages[position]) } } }
         layout.addView(languageSpinner)
-        layout.addView(Button(this).apply {
-            text = "Turn Guide AI off"
-            setOnClickListener { GuideSettings.setActive(this@MainActivity, false); text = "Guide AI is off" }
-        })
+        layout.addView(CheckBox(this).apply { text = "Voice guidance"; isChecked = GuideSettings.voiceEnabled(this@MainActivity); setOnCheckedChangeListener { _, checked -> GuideSettings.setVoiceEnabled(this@MainActivity, checked) } })
+        layout.addView(Button(this).apply { text = "Turn Guide AI off"; setOnClickListener { GuideSettings.setActive(this@MainActivity, false); text = "Guide AI is off" } })
         setContentView(layout)
     }
 }
