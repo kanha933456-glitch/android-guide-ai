@@ -36,13 +36,21 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Build debug APK
-        run: gradle assembleDebug -PguideApiUrl="${{ inputs.guide_api_url || 'https://YOUR-VERCEL-DOMAIN.vercel.app/api/guide' }}"
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
+
+      - name: Build Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle assembleRelease -PguideApiUrl="${{ inputs.guide_api_url || 'https://android-guide-ai.vercel.app/api/guide' }}"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: guide-ai-debug-apk
-          path: android-guide-ai/app/build/outputs/apk/debug/app-debug.apk
+          name: guide-ai-release-apk
+          path: android-guide-ai/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
