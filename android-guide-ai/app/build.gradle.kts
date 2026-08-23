@@ -6,6 +6,20 @@ plugins {
 android { namespace = "com.guideai.app"; compileSdk = 35
     defaultConfig { applicationId = "com.guideai.app"; minSdk = 26; targetSdk = 35; versionCode = 1; versionName = "0.1.0"; buildConfigField("String", "GUIDE_API_URL", "\"${project.findProperty("guideApiUrl") ?: ""}\"") }
     buildFeatures { buildConfig = true }
+    signingConfigs {
+        create("release") {
+            storeFile = file("release.keystore")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
 }
 
 kotlin { jvmToolchain(17) }
