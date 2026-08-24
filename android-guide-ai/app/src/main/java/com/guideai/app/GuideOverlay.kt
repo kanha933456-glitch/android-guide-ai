@@ -64,8 +64,22 @@ object GuideOverlay {
             setTextColor(Color.WHITE)
             setHintTextColor(Color.LTGRAY)
             textSize = 13f
+            isFocusable = true
+            isFocusableInTouchMode = true
         }
         card.addView(question)
+
+        fun cleanGuidance(raw: String): String {
+            return raw
+                .replace(Regex("```json\\s*"), "")
+                .replace(Regex("```\\s*"), "")
+                .replace(Regex("\\{\"guidance\":\\s*\""), "")
+                .replace(Regex("\",\\s*\"action\".*"), "")
+                .replace(Regex("\"\\}.*"), "")
+                .replace("\\n", "\n")
+                .replace(Regex("(\\d+\\.)"), "\n$1")
+                .trim()
+        }
 
         val buttonRow1 = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -82,8 +96,8 @@ object GuideOverlay {
                 CoroutineScope(Dispatchers.Main).launch {
                     GuideApi.explain(language, "$screenText\nUser question: $query")
                         .onSuccess { answer ->
-                            guidance.text = answer
-                            if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide")
+                            guidance.text = cleanGuidance(answer)
+                            if (GuideSettings.voiceEnabled(context)) speaker.speak(cleanGuidance(answer), TextToSpeech.QUEUE_FLUSH, null, "guide")
                         }
                         .onFailure { guidance.text = "Error. Dobara try karein." }
                     text = "Poochho"
@@ -100,8 +114,8 @@ object GuideOverlay {
                 CoroutineScope(Dispatchers.Main).launch {
                     GuideApi.explain(language, screenText)
                         .onSuccess { answer ->
-                            guidance.text = answer
-                            if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide")
+                            guidance.text = cleanGuidance(answer)
+                            if (GuideSettings.voiceEnabled(context)) speaker.speak(cleanGuidance(answer), TextToSpeech.QUEUE_FLUSH, null, "guide")
                         }
                         .onFailure { guidance.text = "Error. Dobara try karein." }
                     text = "Explain"
@@ -130,8 +144,8 @@ object GuideOverlay {
                     } else {
                         GuideApi.explainVision(language, image, question.text.toString())
                             .onSuccess { answer ->
-                                guidance.text = answer
-                                if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                guidance.text = cleanGuidance(answer)
+                                if (GuideSettings.voiceEnabled(context)) speaker.speak(cleanGuidance(answer), TextToSpeech.QUEUE_FLUSH, null, "vision")
                             }
                             .onFailure { guidance.text = "Visual guidance error." }
                     }
@@ -155,7 +169,7 @@ object GuideOverlay {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
