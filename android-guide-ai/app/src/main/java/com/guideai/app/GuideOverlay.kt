@@ -26,7 +26,12 @@ object GuideOverlay {
         if (protected) return
         lateinit var speaker: TextToSpeech
         val language = GuideSettings.language(context)
-        val locale = when (language) { "English" -> Locale.US; "اردو" -> Locale("ur", "PK"); "বাংলা" -> Locale("bn", "BD"); else -> Locale("hi", "IN") }
+        val locale = when (language) {
+            "English" -> Locale.US
+            "اردو" -> Locale("ur", "PK")
+            "বাংলা" -> Locale("bn", "BD")
+            else -> Locale("hi", "IN")
+        }
         speaker = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 speaker.language = locale
@@ -34,51 +39,135 @@ object GuideOverlay {
             }
         }
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val card = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(28, 22, 28, 22); setBackgroundColor(Color.rgb(22, 29, 39)) }
-        card.addView(TextView(context).apply { text = if (stuck) "Guide AI noticed you may be stuck" else "Guide AI is ready"; setTextColor(Color.rgb(247, 185, 85)); textSize = 18f })
-        val guidance = TextView(context).apply { text = "Screen text captured safely. Tap below for Gemini guidance."; setTextColor(Color.WHITE); textSize = 14f }
+
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(28, 22, 28, 22)
+            setBackgroundColor(Color.argb(240, 22, 29, 39))
+        }
+
+        card.addView(TextView(context).apply {
+            text = if (stuck) "Guide AI: Aap stuck lag rahe hain" else "Guide AI"
+            setTextColor(Color.rgb(247, 185, 85))
+            textSize = 16f
+        })
+
+        val guidance = TextView(context).apply {
+            text = "Tap karo guidance ke liye"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+        }
         card.addView(guidance)
-        val question = EditText(context).apply { hint = "Apna sawaal likhein"; setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY) }
+
+        val question = EditText(context).apply {
+            hint = "Sawaal likhein (optional)"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
+            textSize = 13f
+        }
         card.addView(question)
-        card.addView(Button(context).apply {
-            text = "Ask Guide AI"
+
+        val buttonRow1 = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        val askButton = Button(context).apply {
+            text = "Poochho"
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
                 val query = question.text.toString().trim()
                 if (query.isEmpty()) return@setOnClickListener
-                text = "Thinking…"
+                text = "..."
                 CoroutineScope(Dispatchers.Main).launch {
-                    GuideApi.explain(language, "$screenText\nUser question: $query").onSuccess { answer -> guidance.text = answer; if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide") }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
-                    text = "Ask again"
+                    GuideApi.explain(language, "$screenText\nUser question: $query")
+                        .onSuccess { answer ->
+                            guidance.text = answer
+                            if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide")
+                        }
+                        .onFailure { guidance.text = "Error. Dobara try karein." }
+                    text = "Poochho"
                 }
             }
-        })
-        card.addView(Button(context).apply {
-            text = "Analyze screenshot"
+        }
+
+        val explainButton = Button(context).apply {
+            text = "Explain"
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                text = "Analyzing…"
+                text = "..."
+                CoroutineScope(Dispatchers.Main).launch {
+                    GuideApi.explain(language, screenText)
+                        .onSuccess { answer ->
+                            guidance.text = answer
+                            if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "guide")
+                        }
+                        .onFailure { guidance.text = "Error. Dobara try karein." }
+                    text = "Explain"
+                }
+            }
+        }
+
+        buttonRow1.addView(askButton)
+        buttonRow1.addView(explainButton)
+        card.addView(buttonRow1)
+
+        val buttonRow2 = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        val analyzeButton = Button(context).apply {
+            text = "Screenshot"
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                text = "..."
                 CoroutineScope(Dispatchers.Main).launch {
                     val image = ScreenCapture.capture(context)
-                    if (image == null) guidance.text = "Pehle app me 'Allow Screen Capture' permission dein."
-                    else GuideApi.explainVision(language, image, question.text.toString()).onSuccess { answer -> guidance.text = answer; if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "vision") }.onFailure { guidance.text = "Visual guidance connect nahi ho paayi." }
-                    text = "Analyze again"
+                    if (image == null) {
+                        guidance.text = "Screen capture permission dein."
+                    } else {
+                        GuideApi.explainVision(language, image, question.text.toString())
+                            .onSuccess { answer ->
+                                guidance.text = answer
+                                if (GuideSettings.voiceEnabled(context)) speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                            }
+                            .onFailure { guidance.text = "Visual guidance error." }
+                    }
+                    text = "Screenshot"
                 }
             }
-        })
-        card.addView(Button(context).apply {
-            text = "Explain next step"
-            setOnClickListener {
-                text = "Thinking…"
-                CoroutineScope(Dispatchers.Main).launch {
-                    GuideApi.explain(language, screenText).onSuccess { guidance.text = it; if (GuideSettings.voiceEnabled(context)) speaker.speak(it, TextToSpeech.QUEUE_FLUSH, null, "guide") }.onFailure { guidance.text = "API URL configure karein, phir dobara try karein." }
-                    text = "Explain again"
-                }
-            }
-        })
-        card.addView(Button(context).apply { text = "Close"; setOnClickListener { hide() } })
-        val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, 0, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; y = 80 }
+        }
+
+        val closeButton = Button(context).apply {
+            text = "Band karo"
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener { hide() }
+        }
+
+        buttonRow2.addView(analyzeButton)
+        buttonRow2.addView(closeButton)
+        card.addView(buttonRow2)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM
+            y = 0
+        }
+
         windowManager?.addView(card, params)
         overlay = card
     }
 
-    fun hide() { overlay?.let { windowManager?.removeView(it) }; overlay = null }
+    fun hide() {
+        overlay?.let { windowManager?.removeView(it) }
+        overlay = null
+    }
 }
