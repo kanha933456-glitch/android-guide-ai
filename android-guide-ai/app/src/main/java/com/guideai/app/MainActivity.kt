@@ -111,15 +111,14 @@ class MainActivity : AppCompatActivity() {
 
         layout.addView(TextView(this).apply { text = "" })
 
-        guideToggleButton = Button(this).apply {
-            updateToggleText()
-            setOnClickListener {
-                val current = GuideSettings.isActive(this@MainActivity)
-                GuideSettings.setActive(this@MainActivity, !current)
-                updateToggleText()
-            }
-        }
+        guideToggleButton = Button(this)
         layout.addView(guideToggleButton)
+        updateToggleText()
+        guideToggleButton.setOnClickListener {
+            val current = GuideSettings.isActive(this@MainActivity)
+            GuideSettings.setActive(this@MainActivity, !current)
+            updateToggleText()
+        }
 
         scrollView.addView(layout)
         setContentView(scrollView)
