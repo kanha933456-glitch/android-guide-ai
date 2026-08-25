@@ -1,6 +1,7 @@
 package com.guideai.app
 
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -9,11 +10,24 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var guideToggleButton: Button
+
+    private val captureRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            try {
+                ScreenCapture.start(this, result.resultCode, result.data!!)
+                Toast.makeText(this, "Screen capture ready!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,7 +40,7 @@ class MainActivity : AppCompatActivity() {
 
         layout.addView(TextView(this).apply { text = "Guide AI"; textSize = 28f })
         layout.addView(TextView(this).apply {
-            text = "\nEnable screen access and overlay permission to get step-by-step help in other apps.\n"
+            text = "\nEnable screen access, overlay aur screen capture permission taaki app screenshot lekar exact guidance de sake.\n"
             textSize = 16f
         })
 
@@ -39,6 +53,18 @@ class MainActivity : AppCompatActivity() {
             text = "Allow Floating Guide Button"
             setOnClickListener {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }
+        })
+
+        layout.addView(Button(this).apply {
+            text = "Allow Screen Capture (one time)"
+            setOnClickListener {
+                try {
+                    val manager = getSystemService(MediaProjectionManager::class.java)
+                    captureRequest.launch(manager.createScreenCaptureIntent())
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         })
 
