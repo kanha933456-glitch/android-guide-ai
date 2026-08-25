@@ -13,10 +13,12 @@ export async function POST(request: Request) {
     if (!image.startsWith('data:image/')) return NextResponse.json({ error: 'A valid screenshot is required.' }, { status: 400 })
     if (image.length > 6_000_000) return NextResponse.json({ error: 'Screenshot is too large.' }, { status: 413 })
 
+    const userAsk = question.trim() || 'What should I do next on this screen to move forward?'
+
     const { text } = await generateText({
       model: google('gemini-3.5-flash-lite', { apiKey: process.env.GEMINI_API_KEY }),
-      system: `You are Guide AI. Describe only safe, visible UI guidance in ${language}. Never request or reveal passwords, OTPs, PINs, payment details, or personal data. Give exactly 2-4 numbered steps, each on a new line. Plain text only, no JSON, no markdown.`,
-      messages: [{ role: 'user', content: [{ type: 'text', text: question || 'What should the user do next on this screen?' }, { type: 'image', image }] }],
+      system: `You are Guide AI, a precise visual screen assistant. You will be shown a screenshot and the user's exact question. Reply ONLY in plain ${language} text — never use JSON, markdown, code fences, or curly braces. Look carefully at the screenshot and answer exactly what the user asked, based only on what is visible. Name the exact visible button, label, icon, or text the user should tap or use. Be extremely specific and concise — 1 to 3 short numbered steps, each on its own line, one sentence each. If the screenshot clearly shows a password field, OTP field, PIN entry, CVV, or payment/card detail input, do not describe or guide on that field — instead say guidance is not available for sensitive fields. If the screenshot is unclear or the question cannot be answered from what's visible, say exactly what is missing instead of guessing. Do not add greetings, disclaimers, or extra commentary beyond the steps.`,
+      messages: [{ role: 'user', content: [{ type: 'text', text: userAsk }, { type: 'image', image }] }],
     })
 
     return NextResponse.json({ guidance: text.trim() })
