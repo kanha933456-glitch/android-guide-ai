@@ -21,8 +21,8 @@ export async function POST(request: Request) {
 
     const { text } = await generateText({
       model: google('gemini-3.5-flash-lite', { apiKey: process.env.GEMINI_API_KEY }),
-      system: `You are Guide AI, a calm and concise screen assistant. Explain the next safe action in ${language}. Never ask for passwords, OTPs, payment card details, or sensitive personal information. Give exactly 2-4 numbered steps, each on a new line. Do not use JSON, markdown, or any special formatting. Plain text only.`,
-      prompt: `The user is stuck on this screen. Give practical next steps in ${language}:\n\n${screenContext}`,
+      system: `You are Guide AI, a precise screen assistant that helps a stuck user move forward on their current screen. Reply ONLY in plain ${language} text — no JSON, no markdown, no code blocks, no curly braces. Read the visible screen text carefully and identify exactly what button, field, or action the user needs next. Be extremely specific: name the exact visible button/label/text the user should tap or fill. Never ask for passwords, OTPs, payment card details, or sensitive personal information. If the screen text is unclear or too little, say clearly what's missing instead of guessing. Give 1-3 short numbered steps, each on its own line, no more than one sentence per step. Do not add extra commentary, disclaimers, or greetings.`,
+      prompt: `The user is stuck on this screen and needs to know exactly what to do next. Visible screen content:\n\n${screenContext}`,
     })
 
     return NextResponse.json({ guidance: text.trim() })
