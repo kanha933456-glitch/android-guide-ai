@@ -1,7 +1,6 @@
 package com.guideai.app
 
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -10,24 +9,11 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var guideToggleButton: Button
-
-    private val captureRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK && result.data != null) {
-            try {
-                ScreenCapture.start(this, result.resultCode, result.data!!)
-                Toast.makeText(this, "Screen capture ready!", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,11 +24,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(48, 64, 48, 32)
         }
 
-        layout.addView(TextView(this).apply {
-            text = "Guide AI"
-            textSize = 28f
-        })
-
+        layout.addView(TextView(this).apply { text = "Guide AI"; textSize = 28f })
         layout.addView(TextView(this).apply {
             text = "\nEnable screen access and overlay permission to get step-by-step help in other apps.\n"
             textSize = 16f
@@ -60,37 +42,17 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        layout.addView(Button(this).apply {
-            text = "Allow Screen Capture (one time)"
-            setOnClickListener {
-                try {
-                    val manager = getSystemService(MediaProjectionManager::class.java)
-                    captureRequest.launch(manager.createScreenCaptureIntent())
-                } catch (e: Exception) {
-                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        })
-
         layout.addView(TextView(this).apply { text = "\nPrivacy"; textSize = 16f })
-
         layout.addView(CheckBox(this).apply {
             text = "I understand screen content is sent temporarily for guidance"
             isChecked = GuideSettings.hasConsent(this@MainActivity)
-            setOnCheckedChangeListener { _, checked ->
-                GuideSettings.setConsent(this@MainActivity, checked)
-            }
+            setOnCheckedChangeListener { _, checked -> GuideSettings.setConsent(this@MainActivity, checked) }
         })
 
         layout.addView(TextView(this).apply { text = "\nLanguage"; textSize = 16f })
-
         val languages = arrayOf("Hindi", "English", "اردو", "বাংলা")
         val languageSpinner = android.widget.Spinner(this).apply {
-            adapter = android.widget.ArrayAdapter(
-                this@MainActivity,
-                android.R.layout.simple_spinner_dropdown_item,
-                languages
-            )
+            adapter = android.widget.ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, languages)
             setSelection(languages.indexOf(GuideSettings.language(this@MainActivity)).coerceAtLeast(0))
             onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
@@ -104,9 +66,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(CheckBox(this).apply {
             text = "Voice guidance"
             isChecked = GuideSettings.voiceEnabled(this@MainActivity)
-            setOnCheckedChangeListener { _, checked ->
-                GuideSettings.setVoiceEnabled(this@MainActivity, checked)
-            }
+            setOnCheckedChangeListener { _, checked -> GuideSettings.setVoiceEnabled(this@MainActivity, checked) }
         })
 
         layout.addView(TextView(this).apply { text = "" })
@@ -126,9 +86,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::guideToggleButton.isInitialized) {
-            updateToggleText()
-        }
+        if (::guideToggleButton.isInitialized) updateToggleText()
     }
 
     private fun updateToggleText() {
