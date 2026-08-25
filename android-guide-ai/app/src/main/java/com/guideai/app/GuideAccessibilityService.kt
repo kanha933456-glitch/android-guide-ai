@@ -28,7 +28,7 @@ class GuideAccessibilityService : AccessibilityService() {
         if ((changed || stuck) && now - lastShownAt > 2500) {
             lastContext = context
             lastShownAt = now
-            GuideOverlay.show(this, context, stuck)
+            GuideOverlay.show(this, stuck)
         }
     }
 
