@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var overlay: View? = null
+    private var currentParams: WindowManager.LayoutParams? = null
 
     fun show(context: Context, screenText: String, stuck: Boolean = false) {
         if (overlay != null) return
@@ -43,7 +44,7 @@ object GuideOverlay {
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(28, 22, 28, 22)
-            setBackgroundColor(Color.argb(240, 22, 29, 39))
+            setBackgroundColor(Color.argb(245, 22, 29, 39))
         }
 
         card.addView(TextView(context).apply {
@@ -53,19 +54,31 @@ object GuideOverlay {
         })
 
         val guidance = TextView(context).apply {
-            text = "Tap karo guidance ke liye"
+            text = "Apna sawaal likho jahan aap fanse hain — main aapko exact next step bataunga."
             setTextColor(Color.WHITE)
             textSize = 13f
         }
         card.addView(guidance)
 
+        fun setWindowFocusable(focusable: Boolean) {
+            val params = currentParams ?: return
+            if (focusable) {
+                params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            } else {
+                params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            }
+            windowManager?.updateViewLayout(card, params)
+        }
+
         val question = EditText(context).apply {
-            hint = "Sawaal likhein (optional)"
+            hint = "Yahan apna sawaal likhein"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.LTGRAY)
             textSize = 13f
-            isFocusable = true
-            isFocusableInTouchMode = true
+            setOnFocusChangeListener { _, hasFocus ->
+                if (!hasFocus) setWindowFocusable(false)
+            }
+            setOnClickListener { setWindowFocusable(true); requestFocus() }
         }
         card.addView(question)
 
@@ -73,108 +86,60 @@ object GuideOverlay {
             return raw
                 .replace(Regex("```json\\s*"), "")
                 .replace(Regex("```\\s*"), "")
-                .replace(Regex("\\{\"guidance\":\\s*\""), "")
-                .replace(Regex("\",\\s*\"action\".*"), "")
-                .replace(Regex("\"\\}.*"), "")
+                .replace(Regex("\\{\\s*\"guidance\"\\s*:\\s*\""), "")
+                .replace(Regex("\"\\s*,\\s*\"action\".*"), "")
+                .replace(Regex("\"\\s*\\}\\s*$"), "")
                 .replace("\\n", "\n")
-                .replace(Regex("(\\d+\\.)"), "\n$1")
+                .replace(Regex("(?<!^)(\\d+\\.\\s)"), "\n$1")
                 .trim()
         }
 
-        val buttonRow1 = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+        val buttonRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
 
         val askButton = Button(context).apply {
-            text = "Poochho"
-            textSize = 11f
+            text = "Ask Guide AI"
+            textSize = 12f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
                 val query = question.text.toString().trim()
-                if (query.isEmpty()) return@setOnClickListener
-                text = "..."
+                val effectiveQuery = if (query.isEmpty()) "User is stuck. Give the single safest, most specific next step." else query
+                text = "Sochte hain…"
+                setWindowFocusable(false)
                 CoroutineScope(Dispatchers.Main).launch {
-                    GuideApi.explain(language, "$screenText\nUser question: $query")
+                    GuideApi.explain(language, "$screenText\nUser question: $effectiveQuery")
                         .onSuccess { answer ->
-                            guidance.text = cleanGuidance(answer)
-                            if (GuideSettings.voiceEnabled(context)) speaker.speak(cleanGuidance(answer), TextToSpeech.QUEUE_FLUSH, null, "guide")
+                            val clean = cleanGuidance(answer)
+                            guidance.text = clean
+                            if (GuideSettings.voiceEnabled(context)) speaker.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "guide")
                         }
-                        .onFailure { guidance.text = "Error. Dobara try karein." }
-                    text = "Poochho"
-                }
-            }
-        }
-
-        val explainButton = Button(context).apply {
-            text = "Explain"
-            textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener {
-                text = "..."
-                CoroutineScope(Dispatchers.Main).launch {
-                    GuideApi.explain(language, screenText)
-                        .onSuccess { answer ->
-                            guidance.text = cleanGuidance(answer)
-                            if (GuideSettings.voiceEnabled(context)) speaker.speak(cleanGuidance(answer), TextToSpeech.QUEUE_FLUSH, null, "guide")
-                        }
-                        .onFailure { guidance.text = "Error. Dobara try karein." }
-                    text = "Explain"
-                }
-            }
-        }
-
-        buttonRow1.addView(askButton)
-        buttonRow1.addView(explainButton)
-        card.addView(buttonRow1)
-
-        val buttonRow2 = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-
-        val analyzeButton = Button(context).apply {
-            text = "Screenshot"
-            textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener {
-                text = "..."
-                CoroutineScope(Dispatchers.Main).launch {
-                    val image = ScreenCapture.capture(context)
-                    if (image == null) {
-                        guidance.text = "Screen capture permission dein."
-                    } else {
-                        GuideApi.explainVision(language, image, question.text.toString())
-                            .onSuccess { answer ->
-                                guidance.text = cleanGuidance(answer)
-                                if (GuideSettings.voiceEnabled(context)) speaker.speak(cleanGuidance(answer), TextToSpeech.QUEUE_FLUSH, null, "vision")
-                            }
-                            .onFailure { guidance.text = "Visual guidance error." }
-                    }
-                    text = "Screenshot"
+                        .onFailure { guidance.text = "Guidance nahi mil payi. Dobara try karein." }
+                    text = "Ask Guide AI"
                 }
             }
         }
 
         val closeButton = Button(context).apply {
             text = "Band karo"
-            textSize = 11f
+            textSize = 12f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { hide() }
         }
 
-        buttonRow2.addView(analyzeButton)
-        buttonRow2.addView(closeButton)
-        card.addView(buttonRow2)
+        buttonRow.addView(askButton)
+        buttonRow.addView(closeButton)
+        card.addView(buttonRow)
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
         }
+        currentParams = params
 
         windowManager?.addView(card, params)
         overlay = card
@@ -183,5 +148,6 @@ object GuideOverlay {
     fun hide() {
         overlay?.let { windowManager?.removeView(it) }
         overlay = null
+        currentParams = null
     }
 }
