@@ -5,10 +5,13 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 class GuideAccessibilityService : AccessibilityService() {
-    private var lastContext = ""
+    private var lastPackage = ""
     private var lastShownAt = 0L
-    private var sameScreenCount = 0
-    private val protectedPackages = setOf("com.android.settings", "com.google.android.apps.walletnfcrel")
+    private var samePackageCount = 0
+    private val protectedPackages = setOf(
+        "com.android.settings",
+        "com.google.android.apps.walletnfcrel"
+    )
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!GuideSettings.isActive(this)) {
@@ -16,17 +19,21 @@ class GuideAccessibilityService : AccessibilityService() {
             return
         }
         val root = rootInActiveWindow ?: return
-        if (root.packageName?.toString() in protectedPackages) return
-        val visibleText = StringBuilder()
-        collectText(root, visibleText)
-        val context = visibleText.toString().trim().take(4000)
+        val pkg = root.packageName?.toString() ?: return
+        if (pkg in protectedPackages) return
+        if (!GuideSettings.hasConsent(this)) return
+
         val now = System.currentTimeMillis()
-        if (!GuideSettings.hasConsent(this) || context.isEmpty()) return
-        if (context == lastContext) sameScreenCount++ else sameScreenCount = 1
-        val changed = context != lastContext
-        val stuck = sameScreenCount >= 3
-        if ((changed || stuck) && now - lastShownAt > 2500) {
-            lastContext = context
+        if (pkg != lastPackage) {
+            GuideOverlay.hide()
+            samePackageCount = 1
+        } else {
+            samePackageCount++
+        }
+        lastPackage = pkg
+
+        val stuck = samePackageCount >= 5
+        if (now - lastShownAt > 3000) {
             lastShownAt = now
             GuideOverlay.show(this, stuck)
         }
