@@ -6,6 +6,7 @@ import android.graphics.PixelFormat
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -19,7 +20,6 @@ import kotlinx.coroutines.launch
 object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var overlay: View? = null
-    private var currentParams: WindowManager.LayoutParams? = null
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
@@ -41,98 +41,110 @@ object GuideOverlay {
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 22, 28, 22)
+            setPadding(32, 24, 32, 24)
             setBackgroundColor(Color.argb(245, 22, 29, 39))
         }
 
         card.addView(TextView(context).apply {
-            text = if (stuck) "Guide AI: Aap stuck lag rahe hain" else "Guide AI"
+            text = if (stuck) "Guide AI — Aap shayad stuck hain" else "Guide AI"
             setTextColor(Color.rgb(247, 185, 85))
             textSize = 16f
         })
 
         val guidance = TextView(context).apply {
-            text = "Neeche apna sawaal likho ya khali chhodo, phir button dabao."
+            text = "Sawaal likhein ya seedha button dabayein — main screenshot lekar exact guidance dunga."
             setTextColor(Color.WHITE)
             textSize = 13f
         }
         card.addView(guidance)
-
-        fun setWindowFocusable(focusable: Boolean) {
-            val params = currentParams ?: return
-            if (focusable) params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-            else params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            windowManager?.updateViewLayout(card, params)
-        }
 
         val question = EditText(context).apply {
             hint = "Jaise: is page par mujhe kya karna hai?"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.LTGRAY)
             textSize = 13f
-            setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) setWindowFocusable(false) }
-            setOnClickListener { setWindowFocusable(true); requestFocus() }
+            setPadding(0, 8, 0, 8)
+            background = null
+            isFocusable = true
+            isFocusableInTouchMode = true
         }
         card.addView(question)
 
-        fun cleanGuidance(raw: String): String {
-            return raw
-                .replace(Regex("```json\\s*"), "")
-                .replace(Regex("```\\s*"), "")
-                .replace(Regex("\\{\\s*\"guidance\"\\s*:\\s*\""), "")
-                .replace(Regex("\"\\s*,\\s*\"action\".*"), "")
-                .replace(Regex("\"\\s*\\}\\s*$"), "")
-                .replace("\\n", "\n")
-                .replace(Regex("(?<!^)(\\d+\\.\\s)"), "\n$1")
-                .trim()
+        val buttonRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 8, 0, 0)
         }
 
-        val buttonRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM
+            y = 0
+        }
 
         val askButton = Button(context).apply {
             text = "Is page ke baare me poochho"
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                text = "Screen dekh rahe hain…"
-                setWindowFocusable(false)
+                val imm = context.getSystemService(InputMethodManager::class.java)
+                imm?.hideSoftInputFromWindow(question.windowToken, 0)
+                params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                windowManager?.updateViewLayout(card, params)
+
+                text = "Screenshot le rahe hain…"
+                isEnabled = false
+                val userQuestion = question.text.toString().trim()
+
                 CoroutineScope(Dispatchers.Main).launch {
                     val image = ScreenCapture.capture(context)
                     if (image == null) {
-                        guidance.text = "Screen capture permission nahi mili. MainActivity kholkar 'Allow Screen Capture' dubara try karein."
+                        guidance.text = "Screen capture nahi hua. Guide AI app kholkar 'Allow Screen Capture' dabayein."
                     } else {
-                        GuideApi.explainVision(language, image, question.text.toString())
+                        GuideApi.explainVision(language, image, userQuestion)
                             .onSuccess { answer ->
-                                val clean = cleanGuidance(answer)
-                                guidance.text = clean
-                                if (GuideSettings.voiceEnabled(context)) speaker.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                guidance.text = answer
+                                if (GuideSettings.voiceEnabled(context)) {
+                                    speaker.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                }
                             }
-                            .onFailure { guidance.text = "Guidance nahi mil payi. Dubara try karein." }
+                            .onFailure {
+                                guidance.text = "Guidance nahi mili. Internet check karein aur dobara try karein."
+                            }
                     }
-                    text = "Is page ke baare me poochho"
+                    text = "Dobara poochho"
+                    isEnabled = true
                 }
             }
+        }
+
+        question.setOnClickListener {
+            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            windowManager?.updateViewLayout(card, params)
+            question.requestFocus()
+            val imm = context.getSystemService(InputMethodManager::class.java)
+            imm?.showSoftInput(question, InputMethodManager.SHOW_IMPLICIT)
         }
 
         val closeButton = Button(context).apply {
             text = "Band karo"
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener { hide() }
+            setOnClickListener {
+                val imm = context.getSystemService(InputMethodManager::class.java)
+                imm?.hideSoftInputFromWindow(question.windowToken, 0)
+                hide()
+            }
         }
 
         buttonRow.addView(askButton)
         buttonRow.addView(closeButton)
         card.addView(buttonRow)
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.BOTTOM; y = 0 }
-        currentParams = params
 
         windowManager?.addView(card, params)
         overlay = card
@@ -141,6 +153,5 @@ object GuideOverlay {
     fun hide() {
         overlay?.let { windowManager?.removeView(it) }
         overlay = null
-        currentParams = null
     }
 }
