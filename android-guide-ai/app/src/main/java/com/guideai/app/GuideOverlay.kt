@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var overlay: View? = null
+    var isBusy = false
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
@@ -97,8 +98,9 @@ object GuideOverlay {
                 params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 windowManager?.updateViewLayout(card, params)
 
-                text = "Screenshot le rahe hain…"
+                text = "Soch rahe hain…"
                 isEnabled = false
+                isBusy = true
                 val userQuestion = question.text.toString().trim()
 
                 CoroutineScope(Dispatchers.Main).launch {
@@ -119,6 +121,7 @@ object GuideOverlay {
                     }
                     text = "Dobara poochho"
                     isEnabled = true
+                    isBusy = false
                 }
             }
         }
@@ -138,6 +141,7 @@ object GuideOverlay {
             setOnClickListener {
                 val imm = context.getSystemService(InputMethodManager::class.java)
                 imm?.hideSoftInputFromWindow(question.windowToken, 0)
+                isBusy = false
                 hide()
             }
         }
@@ -151,6 +155,7 @@ object GuideOverlay {
     }
 
     fun hide() {
+        if (isBusy) return
         overlay?.let { windowManager?.removeView(it) }
         overlay = null
     }
