@@ -15,13 +15,17 @@ class GuideAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!GuideSettings.isActive(this)) {
-            GuideOverlay.hide()
+            GuideOverlay.forceHide()
             return
         }
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString() ?: return
-        if (pkg in protectedPackages) return
+        if (pkg in protectedPackages) {
+            GuideOverlay.forceHide()
+            return
+        }
         if (!GuideSettings.hasConsent(this)) return
+        if (GuideOverlay.isPaused) return
 
         val now = System.currentTimeMillis()
         if (pkg != lastPackage) {
