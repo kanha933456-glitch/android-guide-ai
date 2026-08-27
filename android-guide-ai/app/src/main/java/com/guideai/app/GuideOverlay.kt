@@ -28,6 +28,7 @@ object GuideOverlay {
     var isPaused = false
     var isKeyboardOpen = false 
 
+    @JvmStatic
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
@@ -36,7 +37,6 @@ object GuideOverlay {
 
         lateinit var speaker: TextToSpeech
         
-        // Google TTS Engine forcing with Indian Accent for clear & natural voice
         speaker = TextToSpeech(context, { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val indianEnglish = Locale("en", "IN")
@@ -44,8 +44,8 @@ object GuideOverlay {
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                     speaker.language = Locale.getDefault()
                 }
-                speaker.setSpeechRate(0.9f) // Calm and understandable speed
-                speaker.setPitch(1.0f)      // Natural human tone pitch
+                speaker.setSpeechRate(0.9f)
+                speaker.setPitch(1.0f)
             }
         }, "com.google.android.tts")
 
@@ -193,8 +193,6 @@ object GuideOverlay {
                             GuideApi.explainVision(userQuestion, image)
                                 .onSuccess { answer ->
                                     var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
-                                    
-                                    // Markdown **bold** ko automatic (brackets) me convert karne ke liye
                                     clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
 
                                     guidanceLabel.visibility = View.VISIBLE
@@ -202,7 +200,6 @@ object GuideOverlay {
                                     guidance.setTypeface(null, Typeface.BOLD)
 
                                     if (GuideSettings.voiceEnabled(context)) {
-                                        // Brackets ko voice read out se safe hatane ke liye
                                         val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
                                         speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
                                     }
@@ -244,4 +241,19 @@ object GuideOverlay {
         }
 
         buttonRow.addView(askButton)
-        
+        buttonRow.addView(pauseButton)
+        card.addView(buttonRow)
+
+        windowManager?.addView(card, params)
+        overlay = card
+    }
+
+    @JvmStatic
+    fun hide() {
+        if (isBusy) return
+        if (isKeyboardOpen) return 
+        overlay?.let { 
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                
