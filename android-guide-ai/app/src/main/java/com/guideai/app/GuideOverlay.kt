@@ -255,4 +255,29 @@ object GuideOverlay {
     fun hide() {
         if (isBusy) return
         if (isKeyboardOpen) return 
-        
+        overlay?.let { 
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        overlay = null
+    }
+
+    fun forceHide() {
+        isBusy = false
+        isKeyboardOpen = false
+        pauseTimer?.cancel()
+        isPaused = false
+        overlay?.let { 
+            try {
+                windowManager?.removeView(it) 
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        overlay = null
+        windowManager = null
+    }
+}
