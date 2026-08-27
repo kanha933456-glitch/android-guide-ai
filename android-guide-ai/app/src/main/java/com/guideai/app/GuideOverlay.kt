@@ -26,23 +26,29 @@ object GuideOverlay {
     var isBusy = false
     private var pauseTimer: CountDownTimer? = null
     var isPaused = false
-    
-    // Fix 1: Flag banaya taaki keyboard khulne par Accessibility Service dobara naya bubble na banaye
     var isKeyboardOpen = false 
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
-        if (isKeyboardOpen) return // Fix 1: Agar keyboard khula hai toh naya bubble mat banao
+        if (isKeyboardOpen) return 
         if (!GuideSettings.isActive(context)) return
 
         lateinit var speaker: TextToSpeech
-        speaker = TextToSpeech(context) { status ->
+        
+        // Google TTS Engine forcing with Indian Accent for clear & natural voice
+        speaker = TextToSpeech(context, { status ->
             if (status == TextToSpeech.SUCCESS) {
-                speaker.language = Locale.getDefault()
-                speaker.setSpeechRate(0.85f)
+                val indianEnglish = Locale("en", "IN")
+                val result = speaker.setLanguage(indianEnglish)
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    speaker.language = Locale.getDefault()
+                }
+                speaker.setSpeechRate(0.9f) // Calm and understandable speed
+                speaker.setPitch(1.0f)      // Natural human tone pitch
             }
-        }
+        }, "com.google.android.tts")
+
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
         val card = LinearLayout(context).apply {
@@ -74,7 +80,6 @@ object GuideOverlay {
         }
         card.addView(guidance)
 
-        // Fix 2: Window flags ko optimize kiya taaki system Navigation Bar gayab na ho
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -86,7 +91,7 @@ object GuideOverlay {
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE // Soft input mode change kiya
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
 
         val userLabel = TextView(context).apply {
@@ -189,7 +194,7 @@ object GuideOverlay {
                                 .onSuccess { answer ->
                                     var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
                                     
-                                    // Fix 3: AI ke response me **important words** ko automatically brackets ( ) me convert karega
+                                    // Markdown **bold** ko automatic (brackets) me convert karne ke liye
                                     clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
 
                                     guidanceLabel.visibility = View.VISIBLE
@@ -197,7 +202,7 @@ object GuideOverlay {
                                     guidance.setTypeface(null, Typeface.BOLD)
 
                                     if (GuideSettings.voiceEnabled(context)) {
-                                        // Voice me brackets hata kar normal speak karne ke liye formatting
+                                        // Brackets ko voice read out se safe hatane ke liye
                                         val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
                                         speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
                                     }
@@ -239,11 +244,4 @@ object GuideOverlay {
         }
 
         buttonRow.addView(askButton)
-        buttonRow.addView(pauseButton)
-        card.addView(buttonRow)
-
-        windowManager?.addView(card, params)
-        overlay = card
-    }
-
-    fun hide() {
+        
