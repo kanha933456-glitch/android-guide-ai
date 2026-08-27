@@ -49,4 +49,9 @@ class GuideAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() = Unit
+
+    override fun onDestroy() {
+        super.onDestroy()
+        GuideOverlay.forceHide()
+    }
 }
