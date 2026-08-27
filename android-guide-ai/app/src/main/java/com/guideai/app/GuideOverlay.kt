@@ -28,7 +28,6 @@ object GuideOverlay {
     var isPaused = false
     var isKeyboardOpen = false 
 
-    @JvmStatic
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
@@ -248,7 +247,6 @@ object GuideOverlay {
         overlay = card
     }
 
-    @JvmStatic
     fun hide() {
         if (isBusy) return
         if (isKeyboardOpen) return 
@@ -256,4 +254,7 @@ object GuideOverlay {
             try {
                 windowManager?.removeView(it)
             } catch (e: Exception) {
-                
+                e.printStackTrace()
+            }
+        }
+        
