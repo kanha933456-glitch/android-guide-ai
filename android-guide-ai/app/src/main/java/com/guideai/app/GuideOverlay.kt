@@ -20,7 +20,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-// Explicit imports
 import com.guideai.app.GuideSettings
 import com.guideai.app.ScreenCapture
 import com.guideai.app.GuideApi
@@ -46,9 +45,13 @@ object GuideOverlay {
                 val indianEnglish = Locale("en", "IN")
                 val result = speaker.setLanguage(indianEnglish)
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    speaker.language = Locale.getDefault()
+                    val hindi = Locale("hi", "IN")
+                    val resultHi = speaker.setLanguage(hindi)
+                    if (resultHi == TextToSpeech.LANG_MISSING_DATA || resultHi == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        speaker.language = Locale.getDefault()
+                    }
                 }
-                speaker.setSpeechRate(0.9f)
+                speaker.setSpeechRate(0.95f)
                 speaker.setPitch(1.0f)
             }
         }, "com.google.android.tts")
@@ -89,7 +92,6 @@ object GuideOverlay {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -186,42 +188,59 @@ object GuideOverlay {
                 isEnabled = false
                 isBusy = true
 
-                CoroutineScope(Dispatchers.Main).launch {
+                CoroutineScope(Dispatchers.IO).launch {
                     try {
                         val image = ScreenCapture.capture(context)
                         if (image == null) {
-                            guidanceLabel.visibility = View.GONE
-                            guidance.text = "Screen capture failed. Please reopen Guide AI app and tap 'Allow Screen Capture' again."
-                            guidance.setTypeface(null, Typeface.NORMAL)
+                            CoroutineScope(Dispatchers.Main).launch {
+                                guidanceLabel.visibility = View.GONE
+                                guidance.text = "Screen capture failed. Please reopen Guide AI app and tap 'Allow Screen Capture' again."
+                                guidance.setTypeface(null, Typeface.NORMAL)
+                                text = "Ask again"
+                                isEnabled = true
+                                isBusy = false
+                            }
                         } else {
                             GuideApi.explainVision(userQuestion, image)
                                 .onSuccess { answer ->
                                     var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
                                     clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
 
-                                    guidanceLabel.visibility = View.VISIBLE
-                                    guidance.text = clean
-                                    guidance.setTypeface(null, Typeface.BOLD)
+                                    CoroutineScope(Dispatchers.Main).launch {
+                                        guidanceLabel.visibility = View.VISIBLE
+                                        guidance.text = clean
+                                        guidance.setTypeface(null, Typeface.BOLD)
 
-                                    if (GuideSettings.voiceEnabled(context)) {
-                                        val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
-                                        speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                        if (GuideSettings.voiceEnabled(context)) {
+                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\\n", ". ")
+                                            speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                        }
+                                        text = "Ask again"
+                                        isEnabled = true
+                                        isBusy = false
                                     }
                                 }
                                 .onFailure {
-                                    guidanceLabel.visibility = View.GONE
-                                    guidance.text = "Guidance not available. Check internet and try again."
-                                    guidance.setTypeface(null, Typeface.NORMAL)
+                                    CoroutineScope(Dispatchers.Main).launch {
+                                        guidanceLabel.visibility = View.GONE
+                                        guidance.text = "Guidance not available. Check internet and try again."
+                                        guidance.setTypeface(null, Typeface.NORMAL)
+                                        text = "Ask again"
+                                        isEnabled = true
+                                        isBusy = false
+                                    }
                                 }
                         }
                     } catch (e: Exception) {
-                        guidanceLabel.visibility = View.GONE
-                        guidance.text = "Something went wrong. Please try again."
-                        guidance.setTypeface(null, Typeface.NORMAL)
+                        CoroutineScope(Dispatchers.Main).launch {
+                            guidanceLabel.visibility = View.GONE
+                            guidance.text = "Something went wrong. Please try again."
+                            guidance.setTypeface(null, Typeface.NORMAL)
+                            text = "Ask again"
+                            isEnabled = true
+                            isBusy = false
+                        }
                     }
-                    text = "Ask again"
-                    isEnabled = true
-                    isBusy = false
                 }
             }
         }
