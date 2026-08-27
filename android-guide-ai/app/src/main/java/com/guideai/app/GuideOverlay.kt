@@ -26,10 +26,14 @@ object GuideOverlay {
     var isBusy = false
     private var pauseTimer: CountDownTimer? = null
     var isPaused = false
+    
+    // Fix 1: Flag banaya taaki keyboard khulne par Accessibility Service dobara naya bubble na banaye
+    var isKeyboardOpen = false 
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
+        if (isKeyboardOpen) return // Fix 1: Agar keyboard khula hai toh naya bubble mat banao
         if (!GuideSettings.isActive(context)) return
 
         lateinit var speaker: TextToSpeech
@@ -70,17 +74,19 @@ object GuideOverlay {
         }
         card.addView(guidance)
 
+        // Fix 2: Window flags ko optimize kiya taaki system Navigation Bar gayab na ho
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE // Soft input mode change kiya
         }
 
         val userLabel = TextView(context).apply {
@@ -101,11 +107,13 @@ object GuideOverlay {
         card.addView(userQuestionDisplay)
 
         fun openKeyboard() {
+            isKeyboardOpen = true
             params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
             windowManager?.updateViewLayout(card, params)
         }
 
         fun closeKeyboard(question: EditText) {
+            isKeyboardOpen = false
             val imm = context.getSystemService(InputMethodManager::class.java)
             imm?.hideSoftInputFromWindow(question.windowToken, 0)
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
@@ -123,7 +131,6 @@ object GuideOverlay {
             isFocusableInTouchMode = true
         }
 
-        // Fix: Touch karte hi FLAG_NOT_FOCUSABLE ko remove karo taaki window active ho sake
         question.setOnTouchListener { view, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
                 if ((params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
@@ -133,7 +140,6 @@ object GuideOverlay {
             false
         }
 
-        // Fix: Window update hone ke baad chote se delay ke saath soft keyboard prompt karo
         question.setOnFocusChangeListener { view, hasFocus ->
             if (hasFocus) {
                 view.postDelayed({
@@ -181,13 +187,18 @@ object GuideOverlay {
                         } else {
                             GuideApi.explainVision(userQuestion, image)
                                 .onSuccess { answer ->
-                                    val clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
+                                    var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
+                                    
+                                    // Fix 3: AI ke response me **important words** ko automatically brackets ( ) me convert karega
+                                    clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
+
                                     guidanceLabel.visibility = View.VISIBLE
                                     guidance.text = clean
                                     guidance.setTypeface(null, Typeface.BOLD)
 
                                     if (GuideSettings.voiceEnabled(context)) {
-                                        val speakText = clean.replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
+                                        // Voice me brackets hata kar normal speak karne ke liye formatting
+                                        val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
                                         speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
                                     }
                                 }
@@ -236,23 +247,3 @@ object GuideOverlay {
     }
 
     fun hide() {
-        if (isBusy) return
-        overlay?.let { windowManager?.removeView(it) }
-        overlay = null
-    }
-
-    fun forceHide() {
-        isBusy = false
-        pauseTimer?.cancel()
-        isPaused = false
-        overlay?.let { 
-            try {
-                windowManager?.removeView(it) 
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        overlay = null
-        windowManager = null
-    }
-}
