@@ -20,6 +20,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+// Explicit imports
+import com.guideai.app.GuideSettings
+import com.guideai.app.ScreenCapture
+import com.guideai.app.GuideApi
+
 object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var overlay: View? = null
@@ -250,11 +255,4 @@ object GuideOverlay {
     fun hide() {
         if (isBusy) return
         if (isKeyboardOpen) return 
-        overlay?.let { 
-            try {
-                windowManager?.removeView(it)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
         
