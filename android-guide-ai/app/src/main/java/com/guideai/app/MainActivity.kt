@@ -86,12 +86,14 @@ class MainActivity : AppCompatActivity() {
         guideToggleButton = Button(this)
         layout.addView(guideToggleButton)
         updateToggleText()
+        
         guideToggleButton.setOnClickListener {
             val current = GuideSettings.isActive(this@MainActivity)
             val newState = !current
             GuideSettings.setActive(this@MainActivity, newState)
             if (!newState) {
-                GuideOverlay.forceHide()
+                // Fixed: Safe instantiation se call kiya taaki compiler crash na kare
+                com.guideai.app.GuideOverlay.forceHide()
                 try {
                     stopService(Intent(this@MainActivity, CaptureService::class.java))
                 } catch (e: Exception) {
@@ -115,6 +117,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateToggleText() {
         val isActive = GuideSettings.isActive(this)
-        guideToggleButton.text = if (isActive) "Guide AI is OFF — tap to turn ON" else "Guide AI is ON — tap to turn OFF"
+        guideToggleButton.text = if (isActive) "Guide AI is ON — tap to turn OFF" else "Guide AI is OFF — tap to turn ON"
     }
 }
