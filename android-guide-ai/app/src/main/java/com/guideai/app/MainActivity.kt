@@ -92,6 +92,11 @@ class MainActivity : AppCompatActivity() {
             GuideSettings.setActive(this@MainActivity, newState)
             if (!newState) {
                 GuideOverlay.forceHide()
+                try {
+                    stopService(Intent(this@MainActivity, CaptureService::class.java))
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 Toast.makeText(this@MainActivity, "Guide AI is now OFF", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this@MainActivity, "Guide AI is now ON — Guide AI ready", Toast.LENGTH_SHORT).show()
@@ -110,6 +115,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateToggleText() {
         val isActive = GuideSettings.isActive(this)
-        guideToggleButton.text = if (isActive) "Guide AI is ON — tap to turn OFF" else "Guide AI is OFF — tap to turn ON"
+        guideToggleButton.text = if (isActive) "Guide AI is OFF — tap to turn ON" else "Guide AI is ON — tap to turn OFF"
     }
 }
