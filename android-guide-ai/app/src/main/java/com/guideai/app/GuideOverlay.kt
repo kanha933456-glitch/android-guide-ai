@@ -167,29 +167,35 @@ object GuideOverlay {
                 isBusy = true
 
                 CoroutineScope(Dispatchers.Main).launch {
-                    val image = ScreenCapture.capture(context)
-                    if (image == null) {
-                        guidanceLabel.visibility = View.GONE
-                        guidance.text = "Screen capture failed. Open Guide AI app and tap 'Allow Screen Capture'."
-                        guidance.setTypeface(null, Typeface.NORMAL)
-                    } else {
-                        GuideApi.explainVision(userQuestion, image)
-                            .onSuccess { answer ->
-                                val clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
-                                guidanceLabel.visibility = View.VISIBLE
-                                guidance.text = clean
-                                guidance.setTypeface(null, Typeface.BOLD)
+                    try {
+                        val image = ScreenCapture.capture(context)
+                        if (image == null) {
+                            guidanceLabel.visibility = View.GONE
+                            guidance.text = "Screen capture failed. Please reopen Guide AI app and tap 'Allow Screen Capture' again."
+                            guidance.setTypeface(null, Typeface.NORMAL)
+                        } else {
+                            GuideApi.explainVision(userQuestion, image)
+                                .onSuccess { answer ->
+                                    val clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
+                                    guidanceLabel.visibility = View.VISIBLE
+                                    guidance.text = clean
+                                    guidance.setTypeface(null, Typeface.BOLD)
 
-                                if (GuideSettings.voiceEnabled(context)) {
-                                    val speakText = clean.replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
-                                    speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                    if (GuideSettings.voiceEnabled(context)) {
+                                        val speakText = clean.replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
+                                        speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                    }
                                 }
-                            }
-                            .onFailure {
-                                guidanceLabel.visibility = View.GONE
-                                guidance.text = "Guidance not available. Check internet and try again."
-                                guidance.setTypeface(null, Typeface.NORMAL)
-                            }
+                                .onFailure {
+                                    guidanceLabel.visibility = View.GONE
+                                    guidance.text = "Guidance not available. Check internet and try again."
+                                    guidance.setTypeface(null, Typeface.NORMAL)
+                                }
+                        }
+                    } catch (e: Exception) {
+                        guidanceLabel.visibility = View.GONE
+                        guidance.text = "Something went wrong. Please try again."
+                        guidance.setTypeface(null, Typeface.NORMAL)
                     }
                     text = "Ask again"
                     isEnabled = true
