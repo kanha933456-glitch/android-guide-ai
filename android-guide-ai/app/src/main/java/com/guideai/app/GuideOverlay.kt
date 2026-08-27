@@ -14,6 +14,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.speech.tts.TextToSpeech
+import android.view.MotionEvent
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -121,20 +122,24 @@ object GuideOverlay {
             isFocusable = true
             isFocusableInTouchMode = true
         }
-        question.setOnFocusChangeListener { view, hasFocus ->
-            if (hasFocus) {
-                view.post {
-                    val imm = context.getSystemService(InputMethodManager::class.java)
-                    imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+
+        // Fix: Touch karte hi FLAG_NOT_FOCUSABLE ko remove karo taaki window active ho sake
+        question.setOnTouchListener { view, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                if ((params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                    openKeyboard()
                 }
             }
+            false
         }
-        question.setOnClickListener {
-            openKeyboard()
-            it.post {
-                it.requestFocus()
-                val imm = context.getSystemService(InputMethodManager::class.java)
-                imm?.showSoftInput(it, InputMethodManager.SHOW_IMPLICIT)
+
+        // Fix: Window update hone ke baad chote se delay ke saath soft keyboard prompt karo
+        question.setOnFocusChangeListener { view, hasFocus ->
+            if (hasFocus) {
+                view.postDelayed({
+                    val imm = context.getSystemService(InputMethodManager::class.java)
+                    imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                }, 100)
             }
         }
         card.addView(question)
@@ -240,7 +245,14 @@ object GuideOverlay {
         isBusy = false
         pauseTimer?.cancel()
         isPaused = false
-        overlay?.let { windowManager?.removeView(it) }
+        overlay?.let { 
+            try {
+                windowManager?.removeView(it) 
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         overlay = null
+        windowManager = null
     }
 }
