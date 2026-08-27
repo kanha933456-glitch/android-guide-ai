@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity() {
 
         layout.addView(TextView(this).apply { text = "Guide AI"; textSize = 28f })
         layout.addView(TextView(this).apply {
-            text = "\nEnable screen access, overlay aur screen capture permission taaki app screenshot lekar exact guidance de sake.\n"
+            text = "\nEnable screen access, overlay and screen capture permission so the app can take a screenshot and give exact guidance.\n"
             textSize = 16f
         })
 
@@ -75,20 +75,6 @@ class MainActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, checked -> GuideSettings.setConsent(this@MainActivity, checked) }
         })
 
-        layout.addView(TextView(this).apply { text = "\nLanguage"; textSize = 16f })
-        val languages = arrayOf("Hindi", "English", "اردو", "বাংলা")
-        val languageSpinner = android.widget.Spinner(this).apply {
-            adapter = android.widget.ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, languages)
-            setSelection(languages.indexOf(GuideSettings.language(this@MainActivity)).coerceAtLeast(0))
-            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                    GuideSettings.setLanguage(this@MainActivity, languages[position])
-                }
-            }
-        }
-        layout.addView(languageSpinner)
-
         layout.addView(CheckBox(this).apply {
             text = "Voice guidance"
             isChecked = GuideSettings.voiceEnabled(this@MainActivity)
@@ -102,7 +88,14 @@ class MainActivity : AppCompatActivity() {
         updateToggleText()
         guideToggleButton.setOnClickListener {
             val current = GuideSettings.isActive(this@MainActivity)
-            GuideSettings.setActive(this@MainActivity, !current)
+            val newState = !current
+            GuideSettings.setActive(this@MainActivity, newState)
+            if (!newState) {
+                GuideOverlay.forceHide()
+                Toast.makeText(this@MainActivity, "Guide AI is now OFF", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@MainActivity, "Guide AI is now ON — Guide AI ready", Toast.LENGTH_SHORT).show()
+            }
             updateToggleText()
         }
 
