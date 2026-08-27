@@ -16,20 +16,47 @@ object ScreenCapture {
     private var projection: MediaProjection? = null
 
     fun start(context: Context, resultCode: Int, data: Intent) {
-        val serviceIntent = Intent(context, CaptureService::class.java)
-        context.startForegroundService(serviceIntent)
-        val manager = context.getSystemService(MediaProjectionManager::class.java)
-        projection = manager.getMediaProjection(resultCode, data)
+        try {
+            val serviceIntent = Intent(context, CaptureService::class.java)
+            context.startForegroundService(serviceIntent)
+            val manager = context.getSystemService(MediaProjectionManager::class.java)
+            projection = manager.getMediaProjection(resultCode, data)
+        } catch (e: Exception) {
+            projection = null
+        }
     }
 
     fun capture(context: Context): String? {
-        if (!GuideSettings.hasConsent(context)) return null
+        return try {
+            captureInternal(context)
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
+    private fun captureInternal(context: Context): String? {
         val activeProjection = projection ?: return null
         val metrics = DisplayMetrics()
-        (context.getSystemService(WindowManager::class.java)).defaultDisplay.getRealMetrics(metrics)
-        val reader = ImageReader.newInstance(metrics.widthPixels, metrics.heightPixels, PixelFormat.RGBA_8888, 2)
-        val virtualDisplay = activeProjection.createVirtualDisplay("Guide AI", metrics.widthPixels, metrics.heightPixels, metrics.densityDpi, 0, reader.surface, null, null)
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(metrics)
+
+        var reader: ImageReader? = null
+        var virtualDisplay: android.hardware.display.VirtualDisplay? = null
+
         return try {
+            reader = ImageReader.newInstance(metrics.widthPixels, metrics.heightPixels, PixelFormat.RGBA_8888, 2)
+            virtualDisplay = activeProjection.createVirtualDisplay(
+                "GuideAI",
+                metrics.widthPixels,
+                metrics.heightPixels,
+                metrics.densityDpi,
+                0,
+                reader.surface,
+                null,
+                null
+            )
             Thread.sleep(300)
             val image = reader.acquireLatestImage() ?: return null
             val plane = image.planes[0]
@@ -42,15 +69,17 @@ object ScreenCapture {
             bitmap.recycle()
             output.reset()
             encoded
+        } catch (e: Exception) {
+            null
         } finally {
-            virtualDisplay.release()
-            reader.close()
+            try { virtualDisplay?.release() } catch (e: Exception) {}
+            try { reader?.close() } catch (e: Exception) {}
         }
     }
 
     fun stop(context: Context) {
-        projection?.stop()
+        try { projection?.stop() } catch (e: Exception) {}
         projection = null
-        context.stopService(Intent(context, CaptureService::class.java))
+        try { context.stopService(Intent(context, CaptureService::class.java)) } catch (e: Exception) {}
     }
 }
