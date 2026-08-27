@@ -1,3 +1,4 @@
+```kotlin
 package com.guideai.app
 
 import android.content.Intent
@@ -92,8 +93,7 @@ class MainActivity : AppCompatActivity() {
             val newState = !current
             GuideSettings.setActive(this@MainActivity, newState)
             if (!newState) {
-                // Fixed: Safe instantiation se call kiya taaki compiler crash na kare
-                com.guideai.app.GuideOverlay.forceHide()
+                GuideOverlay.forceHide()
                 try {
                     stopService(Intent(this@MainActivity, CaptureService::class.java))
                 } catch (e: Exception) {
