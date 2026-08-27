@@ -1,4 +1,3 @@
-```kotlin
 package com.guideai.app
 
 import android.content.Intent
@@ -14,6 +13,12 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+
+// Explicit imports taaki compiler ko references mil sakein
+import com.guideai.app.GuideSettings
+import com.guideai.app.GuideOverlay
+import com.guideai.app.CaptureService
+import com.guideai.app.ScreenCapture
 
 class MainActivity : AppCompatActivity() {
 
