@@ -29,20 +29,13 @@ object GuideOverlay {
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
+        if (!GuideSettings.isActive(context)) return
 
         lateinit var speaker: TextToSpeech
-        val language = GuideSettings.language(context)
-        val locale = when (language) {
-            "English" -> Locale.US
-            "اردو" -> Locale("ur", "PK")
-            "বাংলা" -> Locale("bn", "BD")
-            else -> Locale.US
-        }
         speaker = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                speaker.language = locale
+                speaker.language = Locale.getDefault()
                 speaker.setSpeechRate(0.85f)
-                speaker.setPitch(1.0f)
             }
         }
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -54,7 +47,7 @@ object GuideOverlay {
         }
 
         card.addView(TextView(context).apply {
-            text = if (stuck) "Guide AI — You seem stuck" else "Guide AI"
+            text = if (stuck) "Guide AI — You seem stuck" else "Guide AI is ready"
             setTextColor(Color.rgb(247, 185, 85))
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
@@ -70,7 +63,7 @@ object GuideOverlay {
         card.addView(guidanceLabel)
 
         val guidance = TextView(context).apply {
-            text = "Ask a question or tap the button — I will take a screenshot and give you exact guidance."
+            text = "Ask a question or tap the button below."
             setTextColor(Color.WHITE)
             textSize = 13f
         }
@@ -86,6 +79,7 @@ object GuideOverlay {
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
         }
 
         val userLabel = TextView(context).apply {
@@ -105,6 +99,18 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
+        fun openKeyboard() {
+            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            windowManager?.updateViewLayout(card, params)
+        }
+
+        fun closeKeyboard(question: EditText) {
+            val imm = context.getSystemService(InputMethodManager::class.java)
+            imm?.hideSoftInputFromWindow(question.windowToken, 0)
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            windowManager?.updateViewLayout(card, params)
+        }
+
         val question = EditText(context).apply {
             hint = "Type your question here (optional)"
             setTextColor(Color.WHITE)
@@ -114,12 +120,21 @@ object GuideOverlay {
             background = null
             isFocusable = true
             isFocusableInTouchMode = true
-            setOnClickListener {
-                params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                windowManager?.updateViewLayout(card, params)
-                requestFocus()
+        }
+        question.setOnFocusChangeListener { view, hasFocus ->
+            if (hasFocus) {
+                view.post {
+                    val imm = context.getSystemService(InputMethodManager::class.java)
+                    imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
+        }
+        question.setOnClickListener {
+            openKeyboard()
+            it.post {
+                it.requestFocus()
                 val imm = context.getSystemService(InputMethodManager::class.java)
-                imm?.showSoftInput(this, InputMethodManager.SHOW_FORCED)
+                imm?.showSoftInput(it, InputMethodManager.SHOW_IMPLICIT)
             }
         }
         card.addView(question)
@@ -134,10 +149,7 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                val imm = context.getSystemService(InputMethodManager::class.java)
-                imm?.hideSoftInputFromWindow(question.windowToken, 0)
-                params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                windowManager?.updateViewLayout(card, params)
+                closeKeyboard(question)
 
                 val userQuestion = question.text.toString().trim()
 
@@ -159,24 +171,17 @@ object GuideOverlay {
                     if (image == null) {
                         guidanceLabel.visibility = View.GONE
                         guidance.text = "Screen capture failed. Open Guide AI app and tap 'Allow Screen Capture'."
+                        guidance.setTypeface(null, Typeface.NORMAL)
                     } else {
-                        GuideApi.explainVision(language, image, userQuestion)
+                        GuideApi.explainVision(userQuestion, image)
                             .onSuccess { answer ->
-                                val clean = answer.trim()
-                                val stepCount = clean.count { it.isDigit() && clean.indexOf(it) < clean.length - 1 && clean[clean.indexOf(it) + 1] == '.' }
-                                val finalText = if (stepCount <= 1) {
-                                    clean.replace(Regex("^1\\.\\s*"), "")
-                                } else clean
-
-                                val speakText = finalText
-                                    .replace(Regex("(\\d+\\.\\s)"), ". ")
-                                    .replace("\n", ". ")
-
+                                val clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
                                 guidanceLabel.visibility = View.VISIBLE
-                                guidance.text = finalText
+                                guidance.text = clean
                                 guidance.setTypeface(null, Typeface.BOLD)
 
                                 if (GuideSettings.voiceEnabled(context)) {
+                                    val speakText = clean.replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
                                     speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
                                 }
                             }
@@ -198,8 +203,7 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                val imm = context.getSystemService(InputMethodManager::class.java)
-                imm?.hideSoftInputFromWindow(question.windowToken, 0)
+                closeKeyboard(question)
                 isBusy = false
                 isPaused = true
                 hide()
