@@ -51,7 +51,7 @@ object GuideOverlay {
                         speaker.language = Locale.getDefault()
                     }
                 }
-                speaker.setSpeechRate(0.95f)
+                speaker.setSpeechRate(0.95f) 
                 speaker.setPitch(1.0f)
             }
         }, "com.google.android.tts")
@@ -91,7 +91,8 @@ object GuideOverlay {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -201,7 +202,13 @@ object GuideOverlay {
                                 isBusy = false
                             }
                         } else {
-                            GuideApi.explainVision(userQuestion, image)
+                            val dynamicPrompt = if (userQuestion.isNotEmpty()) {
+                                "User has asked a direct question: '$userQuestion'. If this is a general knowledge, language, logic, or fact question separate from the visual screen elements, directly answer the user's question completely, accurately, and naturally in Hindi or simple language. Do not say 'This is not available in the screenshot' if the user is asking a general question."
+                            } else {
+                                userQuestion
+                            }
+
+                            GuideApi.explainVision(dynamicPrompt, image)
                                 .onSuccess { answer ->
                                     var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
                                     clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
