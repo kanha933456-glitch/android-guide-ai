@@ -85,7 +85,6 @@ object GuideOverlay {
         }
         card.addView(guidance)
 
-        // FIXED FLAGS: FLAG_NOT_TOUCH_MODAL joda hai taaki phone ka background click block na ho
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -117,11 +116,10 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
+        // KEYBOARD FIXED FUNCTIONS: Yahan clear system refresh logic dala hai
         fun openKeyboard() {
             isKeyboardOpen = true
-            // Keyboard khulne par background touch aur input handling sahi karne ke liye flags fix kiya
-            params.flags = (params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()) or 
-                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
             windowManager?.updateViewLayout(card, params)
         }
 
@@ -129,8 +127,7 @@ object GuideOverlay {
             isKeyboardOpen = false
             val imm = context.getSystemService(InputMethodManager::class.java)
             imm?.hideSoftInputFromWindow(question.windowToken, 0)
-            params.flags = (params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) and 
-                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM.inv()
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             windowManager?.updateViewLayout(card, params)
         }
                 val question = EditText(context).apply {
@@ -146,9 +143,8 @@ object GuideOverlay {
 
         question.setOnTouchListener { view, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                if ((params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
-                    openKeyboard()
-                }
+                openKeyboard()
+                view.requestFocus()
             }
             false
         }
