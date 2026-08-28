@@ -19,7 +19,6 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
 import com.guideai.app.GuideSettings
 import com.guideai.app.ScreenCapture
 import com.guideai.app.GuideApi
@@ -30,16 +29,15 @@ object GuideOverlay {
     var isBusy = false
     private var pauseTimer: CountDownTimer? = null
     var isPaused = false
-    var isKeyboardOpen = false 
+    var isKeyboardOpen = false
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
-        if (isKeyboardOpen) return 
+        if (isKeyboardOpen) return
         if (!GuideSettings.isActive(context)) return
 
         lateinit var speaker: TextToSpeech
-        
         speaker = TextToSpeech(context, { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val indianEnglish = Locale("en", "IN")
@@ -120,8 +118,6 @@ object GuideOverlay {
             isKeyboardOpen = true
             params.flags = (params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()) or 
                     WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
-            
-            card.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_NAVIGATION
             windowManager?.updateViewLayout(card, params)
         }
 
@@ -129,14 +125,10 @@ object GuideOverlay {
             isKeyboardOpen = false
             val imm = context.getSystemService(InputMethodManager::class.java)
             imm?.hideSoftInputFromWindow(question.windowToken, 0)
-            
             params.flags = (params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) and 
                     WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM.inv()
-                    
-            card.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
             windowManager?.updateViewLayout(card, params)
         }
-
         val question = EditText(context).apply {
             hint = "Type your question here (optional)"
             setTextColor(Color.WHITE)
@@ -178,7 +170,6 @@ object GuideOverlay {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
                 closeKeyboard(question)
-
                 val userQuestion = question.text.toString().trim()
 
                 if (userQuestion.isNotEmpty()) {
@@ -200,7 +191,7 @@ object GuideOverlay {
                         if (image == null) {
                             CoroutineScope(Dispatchers.Main).launch {
                                 guidanceLabel.visibility = View.GONE
-                                guidance.text = "Screen capture failed. Please reopen Guide AI app and tap 'Allow Screen Capture' again."
+                                guidance.text = "Screen capture failed. Please reopen Guide AI app."
                                 guidance.setTypeface(null, Typeface.NORMAL)
                                 text = "Ask again"
                                 isEnabled = true
@@ -209,8 +200,8 @@ object GuideOverlay {
                         } else {
                             GuideApi.explainVision(userQuestion, image)
                                 .onSuccess { answer ->
-                                    var clean = answer.trim().replace(Regex("""^1\.\s*(?![\s\S]*\n\d+\.)"""), "")
-                                    clean = clean.replace(Regex("""\*\*(.*?)\*\*"""), "($1)")
+                                    var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
+                                    clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
 
                                     CoroutineScope(Dispatchers.Main).launch {
                                         guidanceLabel.visibility = View.VISIBLE
@@ -218,7 +209,7 @@ object GuideOverlay {
                                         guidance.setTypeface(null, Typeface.BOLD)
 
                                         if (GuideSettings.voiceEnabled(context)) {
-                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("""(\d+\.\s)"""), ". ").replace("\n", ". ")
+                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
                                             speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
                                         }
                                         text = "Ask again"
@@ -279,8 +270,8 @@ object GuideOverlay {
 
     fun hide() {
         if (isBusy) return
-        if (isKeyboardOpen) return 
-        overlay?.let { 
+        if (isKeyboardOpen) return
+        overlay?.let {
             try {
                 windowManager?.removeView(it)
             } catch (e: Exception) {
@@ -295,9 +286,9 @@ object GuideOverlay {
         isKeyboardOpen = false
         pauseTimer?.cancel()
         isPaused = false
-        overlay?.let { 
+        overlay?.let {
             try {
-                windowManager?.removeView(it) 
+                windowManager?.removeView(it)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
