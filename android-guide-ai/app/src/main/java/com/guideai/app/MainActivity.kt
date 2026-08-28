@@ -23,20 +23,49 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var guideToggleButton: Button
 
-    private val captureRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+    private val captureRequest =
+    registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+
         if (result.resultCode == RESULT_OK && result.data != null) {
             try {
-                // Instantly toggling active status state to resolve double-tap issue
+                val serviceIntent = Intent(this, CaptureService::class.java)
+
+                if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+
+                ScreenCapture.start(
+                    this,
+                    result.resultCode,
+                    result.data!!
+                )
+
                 GuideSettings.setActive(this, true)
-                ScreenCapture.start(this, result.resultCode, result.data!!)
                 updateToggleText()
-                Toast.makeText(this, "Screen capture ready!", Toast.LENGTH_SHORT).show()
+
+                Toast.makeText(
+                    this,
+                    "Screen capture ready!",
+                    Toast.LENGTH_SHORT
+                ).show()
+
             } catch (e: Exception) {
-                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this,
+                    "Screen capture error: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
+        } else {
+            Toast.makeText(
+                this,
+                "Screen capture permission cancelled",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
