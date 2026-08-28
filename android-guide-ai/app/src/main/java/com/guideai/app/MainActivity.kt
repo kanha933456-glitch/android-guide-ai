@@ -26,6 +26,7 @@ class MainActivity : AppCompatActivity() {
     private val captureRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
             try {
+                // Instantly toggling active status state to resolve double-tap issue
                 GuideSettings.setActive(this, true)
                 ScreenCapture.start(this, result.resultCode, result.data!!)
                 updateToggleText()
