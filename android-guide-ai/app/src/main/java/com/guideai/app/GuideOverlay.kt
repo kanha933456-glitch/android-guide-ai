@@ -209,8 +209,8 @@ object GuideOverlay {
                         } else {
                             GuideApi.explainVision(userQuestion, image)
                                 .onSuccess { answer ->
-                                    var clean = answer.trim().replace(Regex("""^1\.\s*(?![\s\S]*\n\d+\.)"""), "")
-                                    clean = clean.replace(Regex("""\*\*(.*?)\*\*"""), "($1)")
+                                    var clean = answer.trim().replace(Regex("^1\.\s*(?![\s\S]*\n\d+\.)"), "")
+                                    clean = clean.replace(Regex("\*\*(.*?)\*\*"), "($1)")
 
                                     CoroutineScope(Dispatchers.Main).launch {
                                         guidanceLabel.visibility = View.VISIBLE
@@ -218,7 +218,7 @@ object GuideOverlay {
                                         guidance.setTypeface(null, Typeface.BOLD)
 
                                         if (GuideSettings.voiceEnabled(context)) {
-                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("""(\d+\.\s)"""), ". ").replace("\n", ". ")
+                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\d+\.\s)"), ". ").replace("\n", ". ")
                                             speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
                                         }
                                         text = "Ask again"
