@@ -4,8 +4,11 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.os.Build
 import android.os.CountDownTimer
+import android.speech.tts.TextToSpeech
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -13,50 +16,56 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.speech.tts.TextToSpeech
-import android.view.MotionEvent
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-import com.guideai.app.GuideSettings
-import com.guideai.app.ScreenCapture
-import com.guideai.app.GuideApi
-
 object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var overlay: View? = null
+
     var isBusy = false
-    private var pauseTimer: CountDownTimer? = null
     var isPaused = false
-    var isKeyboardOpen = false 
+    var isKeyboardOpen = false
+
+    private var pauseTimer: CountDownTimer? = null
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
-        if (isKeyboardOpen) return 
+        if (isKeyboardOpen) return
         if (!GuideSettings.isActive(context)) return
 
         lateinit var speaker: TextToSpeech
-        
+
         speaker = TextToSpeech(context, { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val indianEnglish = Locale("en", "IN")
                 val result = speaker.setLanguage(indianEnglish)
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+
+                if (
+                    result == TextToSpeech.LANG_MISSING_DATA ||
+                    result == TextToSpeech.LANG_NOT_SUPPORTED
+                ) {
                     val hindi = Locale("hi", "IN")
-                    val resultHi = speaker.setLanguage(hindi)
-                    if (resultHi == TextToSpeech.LANG_MISSING_DATA || resultHi == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    val resultHindi = speaker.setLanguage(hindi)
+
+                    if (
+                        resultHindi == TextToSpeech.LANG_MISSING_DATA ||
+                        resultHindi == TextToSpeech.LANG_NOT_SUPPORTED
+                    ) {
                         speaker.language = Locale.getDefault()
                     }
                 }
+
                 speaker.setSpeechRate(0.95f)
                 speaker.setPitch(1.0f)
             }
         }, "com.google.android.tts")
 
-        windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        windowManager =
+            context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -65,7 +74,12 @@ object GuideOverlay {
         }
 
         card.addView(TextView(context).apply {
-            text = if (stuck) "Guide AI — You seem stuck" else "Guide AI is ready"
+            text = if (stuck) {
+                "Guide AI — You seem stuck"
+            } else {
+                "Guide AI is ready"
+            }
+
             setTextColor(Color.rgb(247, 185, 85))
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
@@ -78,6 +92,7 @@ object GuideOverlay {
             setTypeface(null, Typeface.BOLD)
             visibility = View.GONE
         }
+
         card.addView(guidanceLabel)
 
         val guidance = TextView(context).apply {
@@ -85,19 +100,35 @@ object GuideOverlay {
             setTextColor(Color.WHITE)
             textSize = 13f
         }
+
         card.addView(guidance)
 
+        /*
+         * Important:
+         * ADJUST_NOTHING use kiya gaya hai taaki keyboard open hone par
+         * Android navigation bar hide ya resize na ho.
+         */
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+
+            softInputMode =
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                navigationBarColor = Color.BLACK
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                navigationBarDividerColor = Color.BLACK
+            }
         }
 
         val userLabel = TextView(context).apply {
@@ -107,6 +138,7 @@ object GuideOverlay {
             setTypeface(null, Typeface.BOLD)
             visibility = View.GONE
         }
+
         card.addView(userLabel)
 
         val userQuestionDisplay = TextView(context).apply {
@@ -115,19 +147,39 @@ object GuideOverlay {
             setPadding(0, 4, 0, 8)
             visibility = View.GONE
         }
+
         card.addView(userQuestionDisplay)
 
         fun openKeyboard() {
             isKeyboardOpen = true
-            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+
+            params.flags = params.flags and
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+
+            params.softInputMode =
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+
             windowManager?.updateViewLayout(card, params)
         }
 
         fun closeKeyboard(question: EditText) {
             isKeyboardOpen = false
-            val imm = context.getSystemService(InputMethodManager::class.java)
-            imm?.hideSoftInputFromWindow(question.windowToken, 0)
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+
+            val inputMethodManager =
+                context.getSystemService(InputMethodManager::class.java)
+
+            inputMethodManager?.hideSoftInputFromWindow(
+                question.windowToken,
+                0
+            )
+
+            params.flags = params.flags or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+
+            params.softInputMode =
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+
             windowManager?.updateViewLayout(card, params)
         }
 
@@ -144,21 +196,32 @@ object GuideOverlay {
 
         question.setOnTouchListener { view, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                if ((params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                val isNotFocusable =
+                    (params.flags and
+                            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0
+
+                if (isNotFocusable) {
                     openKeyboard()
                 }
             }
+
             false
         }
 
         question.setOnFocusChangeListener { view, hasFocus ->
             if (hasFocus) {
                 view.postDelayed({
-                    val imm = context.getSystemService(InputMethodManager::class.java)
-                    imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-                }, 100)
+                    val inputMethodManager =
+                        context.getSystemService(InputMethodManager::class.java)
+
+                    inputMethodManager?.showSoftInput(
+                        view,
+                        InputMethodManager.SHOW_IMPLICIT
+                    )
+                }, 150)
             }
         }
+
         card.addView(question)
 
         val buttonRow = LinearLayout(context).apply {
@@ -169,7 +232,12 @@ object GuideOverlay {
         val askButton = Button(context).apply {
             text = "Ask about this page"
             textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+
             setOnClickListener {
                 closeKeyboard(question)
 
@@ -191,10 +259,12 @@ object GuideOverlay {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         val image = ScreenCapture.capture(context)
+
                         if (image == null) {
                             CoroutineScope(Dispatchers.Main).launch {
                                 guidanceLabel.visibility = View.GONE
-                                guidance.text = "Screen capture failed. Please reopen Guide AI app and tap 'Allow Screen Capture' again."
+                                guidance.text =
+                                    "Screen capture failed. Please reopen Guide AI app and tap 'Allow Screen Capture' again."
                                 guidance.setTypeface(null, Typeface.NORMAL)
                                 text = "Ask again"
                                 isEnabled = true
@@ -203,18 +273,48 @@ object GuideOverlay {
                         } else {
                             GuideApi.explainVision(userQuestion, image)
                                 .onSuccess { answer ->
-                                    var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
-                                    clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
+                                    var clean = answer
+                                        .trim()
+                                        .replace(
+                                            Regex(
+                                                "^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"
+                                            ),
+                                            ""
+                                        )
+
+                                    clean = clean.replace(
+                                        Regex("\\*\\*(.*?)\\*\\*"),
+                                        "($1)"
+                                    )
 
                                     CoroutineScope(Dispatchers.Main).launch {
                                         guidanceLabel.visibility = View.VISIBLE
                                         guidance.text = clean
-                                        guidance.setTypeface(null, Typeface.BOLD)
+                                        guidance.setTypeface(
+                                            null,
+                                            Typeface.BOLD
+                                        )
 
-                                        if (GuideSettings.voiceEnabled(context)) {
-                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\\n", ". ")
-                                            speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                        if (
+                                            GuideSettings.voiceEnabled(context)
+                                        ) {
+                                            val speakText = clean
+                                                .replace("(", "")
+                                                .replace(")", "")
+                                                .replace(
+                                                    Regex("(\\d+\\.\\s)"),
+                                                    ". "
+                                                )
+                                                .replace("\\n", ". ")
+
+                                            speaker.speak(
+                                                speakText,
+                                                TextToSpeech.QUEUE_FLUSH,
+                                                null,
+                                                "vision"
+                                            )
                                         }
+
                                         text = "Ask again"
                                         isEnabled = true
                                         isBusy = false
@@ -223,19 +323,27 @@ object GuideOverlay {
                                 .onFailure {
                                     CoroutineScope(Dispatchers.Main).launch {
                                         guidanceLabel.visibility = View.GONE
-                                        guidance.text = "Guidance not available. Check internet and try again."
-                                        guidance.setTypeface(null, Typeface.NORMAL)
+                                        guidance.text =
+                                            "Guidance not available. Check internet and try again."
+                                        guidance.setTypeface(
+                                            null,
+                                            Typeface.NORMAL
+                                        )
                                         text = "Ask again"
                                         isEnabled = true
                                         isBusy = false
                                     }
                                 }
                         }
-                    } catch (e: Exception) {
+                    } catch (exception: Exception) {
                         CoroutineScope(Dispatchers.Main).launch {
                             guidanceLabel.visibility = View.GONE
-                            guidance.text = "Something went wrong. Please try again."
-                            guidance.setTypeface(null, Typeface.NORMAL)
+                            guidance.text =
+                                "Something went wrong. Please try again."
+                            guidance.setTypeface(
+                                null,
+                                Typeface.NORMAL
+                            )
                             text = "Ask again"
                             isEnabled = true
                             isBusy = false
@@ -248,17 +356,30 @@ object GuideOverlay {
         val pauseButton = Button(context).apply {
             text = "Pause for 2 min"
             textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+
             setOnClickListener {
                 closeKeyboard(question)
+
                 isBusy = false
                 isPaused = true
                 hide()
 
                 pauseTimer?.cancel()
-                pauseTimer = object : CountDownTimer(2 * 60 * 1000L, 1000) {
-                    override fun onTick(millisUntilFinished: Long) {}
-                    override fun onFinish() { isPaused = false }
+
+                pauseTimer = object : CountDownTimer(
+                    2 * 60 * 1000L,
+                    1000
+                ) {
+                    override fun onTick(millisUntilFinished: Long) = Unit
+
+                    override fun onFinish() {
+                        isPaused = false
+                    }
                 }.start()
             }
         }
@@ -267,35 +388,45 @@ object GuideOverlay {
         buttonRow.addView(pauseButton)
         card.addView(buttonRow)
 
-        windowManager?.addView(card, params)
-        overlay = card
+        try {
+            windowManager?.addView(card, params)
+            overlay = card
+        } catch (exception: Exception) {
+            overlay = null
+            isKeyboardOpen = false
+        }
     }
 
     fun hide() {
         if (isBusy) return
-        if (isKeyboardOpen) return 
-        overlay?.let { 
+        if (isKeyboardOpen) return
+
+        overlay?.let { currentOverlay ->
             try {
-                windowManager?.removeView(it)
-            } catch (e: Exception) {
-                e.printStackTrace()
+                windowManager?.removeView(currentOverlay)
+            } catch (exception: Exception) {
+                exception.printStackTrace()
             }
         }
+
         overlay = null
     }
 
     fun forceHide() {
         isBusy = false
         isKeyboardOpen = false
+
         pauseTimer?.cancel()
         isPaused = false
-        overlay?.let { 
+
+        overlay?.let { currentOverlay ->
             try {
-                windowManager?.removeView(it) 
-            } catch (e: Exception) {
-                e.printStackTrace()
+                windowManager?.removeView(currentOverlay)
+            } catch (exception: Exception) {
+                exception.printStackTrace()
             }
         }
+
         overlay = null
         windowManager = null
     }
