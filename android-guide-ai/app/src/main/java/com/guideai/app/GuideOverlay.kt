@@ -91,8 +91,7 @@ object GuideOverlay {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
@@ -119,7 +118,10 @@ object GuideOverlay {
 
         fun openKeyboard() {
             isKeyboardOpen = true
-            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            params.flags = (params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()) or 
+                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+            
+            card.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_NAVIGATION
             windowManager?.updateViewLayout(card, params)
         }
 
@@ -127,7 +129,11 @@ object GuideOverlay {
             isKeyboardOpen = false
             val imm = context.getSystemService(InputMethodManager::class.java)
             imm?.hideSoftInputFromWindow(question.windowToken, 0)
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            
+            params.flags = (params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) and 
+                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM.inv()
+                    
+            card.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
             windowManager?.updateViewLayout(card, params)
         }
 
@@ -203,8 +209,8 @@ object GuideOverlay {
                         } else {
                             GuideApi.explainVision(userQuestion, image)
                                 .onSuccess { answer ->
-                                    var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
-                                    clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
+                                    var clean = answer.trim().replace(Regex("""^1\.\s*(?![\s\S]*\n\d+\.)"""), "")
+                                    clean = clean.replace(Regex("""\*\*(.*?)\*\*"""), "($1)")
 
                                     CoroutineScope(Dispatchers.Main).launch {
                                         guidanceLabel.visibility = View.VISIBLE
@@ -212,7 +218,7 @@ object GuideOverlay {
                                         guidance.setTypeface(null, Typeface.BOLD)
 
                                         if (GuideSettings.voiceEnabled(context)) {
-                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\\n", ". ")
+                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("""(\d+\.\s)"""), ". ").replace("\n", ". ")
                                             speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
                                         }
                                         text = "Ask again"
