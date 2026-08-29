@@ -32,16 +32,15 @@ object GuideOverlay {
     var isBusy = false
     private var pauseTimer: CountDownTimer? = null
     var isPaused = false
-    var isKeyboardOpen = false 
+    var isKeyboardOpen = false
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
-        if (isKeyboardOpen) return 
+        if (isKeyboardOpen) return
         if (!GuideSettings.isActive(context)) return
 
         lateinit var speaker: TextToSpeech
-        
         speaker = TextToSpeech(context, { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val indianEnglish = Locale("en", "IN")
@@ -89,23 +88,19 @@ object GuideOverlay {
         }
         card.addView(guidance)
 
+        // CLEAN FLAGS: FLAG_NOT_FOCUSABLE prevents taking screen focus until tapped
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                fitInsetsTypes = WindowInsets.Type.navigationBars() or WindowInsets.Type.statusBars()
-                fitInsetsSides = WindowInsets.Side.all()
-            }
         }
 
         val userLabel = TextView(context).apply {
@@ -127,7 +122,9 @@ object GuideOverlay {
 
         fun openKeyboard() {
             isKeyboardOpen = true
-            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            // Removing NOT_FOCUSABLE without FLAG_ALT_FOCUSABLE_IM so keyboard docks above Navigation Bar
+            params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
             windowManager?.updateViewLayout(card, params)
         }
 
@@ -135,7 +132,10 @@ object GuideOverlay {
             isKeyboardOpen = false
             val imm = context.getSystemService(InputMethodManager::class.java)
             imm?.hideSoftInputFromWindow(question.windowToken, 0)
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+
+            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
             windowManager?.updateViewLayout(card, params)
         }
 
@@ -180,7 +180,6 @@ object GuideOverlay {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
                 closeKeyboard(question)
-
                 val userQuestion = question.text.toString().trim()
 
                 if (userQuestion.isNotEmpty()) {
@@ -202,7 +201,7 @@ object GuideOverlay {
                         if (image == null) {
                             CoroutineScope(Dispatchers.Main).launch {
                                 guidanceLabel.visibility = View.GONE
-                                guidance.text = "Screen capture failed. Please reopen Guide AI app and tap 'Allow Screen Capture' again."
+                                guidance.text = "Screen capture failed. Please reopen Guide AI app."
                                 guidance.setTypeface(null, Typeface.NORMAL)
                                 text = "Ask again"
                                 isEnabled = true
@@ -220,7 +219,7 @@ object GuideOverlay {
                                         guidance.setTypeface(null, Typeface.BOLD)
 
                                         if (GuideSettings.voiceEnabled(context)) {
-                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\\n", ". ")
+                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
                                             speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
                                         }
                                         text = "Ask again"
@@ -281,8 +280,8 @@ object GuideOverlay {
 
     fun hide() {
         if (isBusy) return
-        if (isKeyboardOpen) return 
-        overlay?.let { 
+        if (isKeyboardOpen) return
+        overlay?.let {
             try {
                 windowManager?.removeView(it)
             } catch (e: Exception) {
@@ -297,9 +296,9 @@ object GuideOverlay {
         isKeyboardOpen = false
         pauseTimer?.cancel()
         isPaused = false
-        overlay?.let { 
+        overlay?.let {
             try {
-                windowManager?.removeView(it) 
+                windowManager?.removeView(it)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
