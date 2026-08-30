@@ -40,19 +40,25 @@ object GuideOverlay {
             if (status == TextToSpeech.SUCCESS) {
                 val indianEnglish = Locale("en", "IN")
                 val result = speaker.setLanguage(indianEnglish)
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                if (result == TextToSpeech.LANG_MISSING_DATA ||
+                    result == TextToSpeech.LANG_NOT_SUPPORTED
+                ) {
                     val hindi = Locale("hi", "IN")
                     val resultHi = speaker.setLanguage(hindi)
-                    if (resultHi == TextToSpeech.LANG_MISSING_DATA || resultHi == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    if (resultHi == TextToSpeech.LANG_MISSING_DATA ||
+                        resultHi == TextToSpeech.LANG_NOT_SUPPORTED
+                    ) {
                         speaker.language = Locale.getDefault()
                     }
                 }
+
                 speaker.setSpeechRate(0.95f)
                 speaker.setPitch(1.0f)
             }
         }, "com.google.android.tts")
 
-        windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        windowManager =
+            context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -61,7 +67,12 @@ object GuideOverlay {
         }
 
         card.addView(TextView(context).apply {
-            text = if (stuck) "Guide AI — You seem stuck" else "Guide AI is ready"
+            text = if (stuck) {
+                "Guide AI — You seem stuck"
+            } else {
+                "Guide AI is ready"
+            }
+
             setTextColor(Color.rgb(247, 185, 85))
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
@@ -74,6 +85,7 @@ object GuideOverlay {
             setTypeface(null, Typeface.BOLD)
             visibility = View.GONE
         }
+
         card.addView(guidanceLabel)
 
         val guidance = TextView(context).apply {
@@ -81,6 +93,7 @@ object GuideOverlay {
             setTextColor(Color.WHITE)
             textSize = 13f
         }
+
         card.addView(guidance)
 
         val userLabel = TextView(context).apply {
@@ -90,6 +103,7 @@ object GuideOverlay {
             setTypeface(null, Typeface.BOLD)
             visibility = View.GONE
         }
+
         card.addView(userLabel)
 
         val userQuestionDisplay = TextView(context).apply {
@@ -98,6 +112,7 @@ object GuideOverlay {
             setPadding(0, 4, 0, 8)
             visibility = View.GONE
         }
+
         card.addView(userQuestionDisplay)
 
         val question = EditText(context).apply {
@@ -109,17 +124,24 @@ object GuideOverlay {
             setBackgroundColor(Color.argb(60, 255, 255, 255))
         }
 
-        // PERFECT STABLE FLAGS: Pure Touch-Through layout with smooth focus request
+        /*
+         * Navigation bar fix:
+         * FLAG_LAYOUT_INSET_DECOR removed.
+         *
+         * This keeps the overlay from affecting the
+         * system navigation bar area.
+         */
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            softInputMode =
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
 
         card.addView(question)
@@ -132,13 +154,24 @@ object GuideOverlay {
         val askButton = Button(context).apply {
             text = "Ask about this page"
             textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+
             setOnClickListener {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                val imm =
+                    context.getSystemService(
+                        Context.INPUT_METHOD_SERVICE
+                    ) as InputMethodManager
+
                 imm.hideSoftInputFromWindow(question.windowToken, 0)
                 question.clearFocus()
 
-                val userQuestion = question.text.toString().trim()
+                val userQuestion =
+                    question.text.toString().trim()
+
                 if (userQuestion.isNotEmpty()) {
                     userLabel.visibility = View.VISIBLE
                     userQuestionDisplay.text = userQuestion
@@ -155,51 +188,125 @@ object GuideOverlay {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         val image = ScreenCapture.capture(context)
+
                         if (image == null) {
                             CoroutineScope(Dispatchers.Main).launch {
                                 guidanceLabel.visibility = View.GONE
-                                guidance.text = "Screen capture failed. Please reopen Guide AI app."
-                                guidance.setTypeface(null, Typeface.NORMAL)
+
+                                guidance.text =
+                                    "Screen capture failed. Please reopen Guide AI."
+
+                                guidance.setTypeface(
+                                    null,
+                                    Typeface.NORMAL
+                                )
+
                                 text = "Ask again"
                                 isEnabled = true
                                 isBusy = false
                             }
                         } else {
-                            GuideApi.explainVision(userQuestion, image)
+                            GuideApi.explainVision(
+                                userQuestion,
+                                image
+                            )
                                 .onSuccess { answer ->
-                                    var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
-                                    clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
 
-                                    CoroutineScope(Dispatchers.Main).launch {
-                                        guidanceLabel.visibility = View.VISIBLE
+                                    var clean = answer
+                                        .trim()
+                                        .replace(
+                                            Regex(
+                                                "^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"
+                                            ),
+                                            ""
+                                        )
+
+                                    clean = clean.replace(
+                                        Regex("\\*\\*(.*?)\\*\\*"),
+                                        "($1)"
+                                    )
+
+                                    CoroutineScope(
+                                        Dispatchers.Main
+                                    ).launch {
+
+                                        guidanceLabel.visibility =
+                                            View.VISIBLE
+
                                         guidance.text = clean
-                                        guidance.setTypeface(null, Typeface.BOLD)
 
-                                        if (GuideSettings.voiceEnabled(context)) {
-                                            val speakText = clean.replace("(", "").replace(")", "").replace(Regex("(\\d+\\.\\s)"), ". ").replace("\n", ". ")
-                                            speaker.speak(speakText, TextToSpeech.QUEUE_FLUSH, null, "vision")
+                                        guidance.setTypeface(
+                                            null,
+                                            Typeface.BOLD
+                                        )
+
+                                        if (
+                                            GuideSettings.voiceEnabled(
+                                                context
+                                            )
+                                        ) {
+                                            val speakText = clean
+                                                .replace("(", "")
+                                                .replace(")", "")
+                                                .replace(
+                                                    Regex("(\\d+\\.\\s)"),
+                                                    ". "
+                                                )
+                                                .replace("\n", ". ")
+
+                                            speaker.speak(
+                                                speakText,
+                                                TextToSpeech.QUEUE_FLUSH,
+                                                null,
+                                                "vision"
+                                            )
                                         }
+
                                         text = "Ask again"
                                         isEnabled = true
                                         isBusy = false
                                     }
                                 }
                                 .onFailure {
-                                    CoroutineScope(Dispatchers.Main).launch {
-                                        guidanceLabel.visibility = View.GONE
-                                        guidance.text = "Guidance not available. Check internet and try again."
-                                        guidance.setTypeface(null, Typeface.NORMAL)
+                                    CoroutineScope(
+                                        Dispatchers.Main
+                                    ).launch {
+
+                                        guidanceLabel.visibility =
+                                            View.GONE
+
+                                        guidance.text =
+                                            "Guidance not available. Check internet and try again."
+
+                                        guidance.setTypeface(
+                                            null,
+                                            Typeface.NORMAL
+                                        )
+
                                         text = "Ask again"
                                         isEnabled = true
                                         isBusy = false
                                     }
                                 }
                         }
+
                     } catch (e: Exception) {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            guidanceLabel.visibility = View.GONE
-                            guidance.text = "Something went wrong. Please try again."
-                            guidance.setTypeface(null, Typeface.NORMAL)
+
+                        CoroutineScope(
+                            Dispatchers.Main
+                        ).launch {
+
+                            guidanceLabel.visibility =
+                                View.GONE
+
+                            guidance.text =
+                                "Something went wrong. Please try again."
+
+                            guidance.setTypeface(
+                                null,
+                                Typeface.NORMAL
+                            )
+
                             text = "Ask again"
                             isEnabled = true
                             isBusy = false
@@ -212,9 +319,19 @@ object GuideOverlay {
         val pauseButton = Button(context).apply {
             text = "Pause for 2 min"
             textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+
             setOnClickListener {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                val imm =
+                    context.getSystemService(
+                        Context.INPUT_METHOD_SERVICE
+                    ) as InputMethodManager
+
                 imm.hideSoftInputFromWindow(question.windowToken, 0)
                 question.clearFocus()
 
@@ -223,15 +340,26 @@ object GuideOverlay {
                 hide()
 
                 pauseTimer?.cancel()
-                pauseTimer = object : CountDownTimer(2 * 60 * 1000L, 1000) {
-                    override fun onTick(millisUntilFinished: Long) {}
-                    override fun onFinish() { isPaused = false }
+
+                pauseTimer = object : CountDownTimer(
+                    2 * 60 * 1000L,
+                    1000
+                ) {
+                    override fun onTick(
+                        millisUntilFinished: Long
+                    ) {
+                    }
+
+                    override fun onFinish() {
+                        isPaused = false
+                    }
                 }.start()
             }
         }
 
         buttonRow.addView(askButton)
         buttonRow.addView(pauseButton)
+
         card.addView(buttonRow)
 
         try {
@@ -244,6 +372,7 @@ object GuideOverlay {
 
     fun hide() {
         if (isBusy) return
+
         overlay?.let {
             try {
                 windowManager?.removeView(it)
@@ -251,13 +380,16 @@ object GuideOverlay {
                 e.printStackTrace()
             }
         }
+
         overlay = null
     }
 
     fun forceHide() {
         isBusy = false
+
         pauseTimer?.cancel()
         isPaused = false
+
         overlay?.let {
             try {
                 windowManager?.removeView(it)
@@ -265,6 +397,7 @@ object GuideOverlay {
                 e.printStackTrace()
             }
         }
+
         overlay = null
         windowManager = null
     }
