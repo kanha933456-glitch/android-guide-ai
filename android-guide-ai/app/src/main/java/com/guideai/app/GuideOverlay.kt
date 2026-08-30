@@ -1,5 +1,6 @@
 package com.guideai.app
 
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -8,11 +9,8 @@ import android.os.Build
 import android.os.CountDownTimer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.WindowInsets
-import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -32,12 +30,10 @@ object GuideOverlay {
     var isBusy = false
     private var pauseTimer: CountDownTimer? = null
     var isPaused = false
-    var isKeyboardOpen = false
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
         if (isPaused) return
-        if (isKeyboardOpen) return
         if (!GuideSettings.isActive(context)) return
 
         lateinit var speaker: TextToSpeech
@@ -88,20 +84,7 @@ object GuideOverlay {
         }
         card.addView(guidance)
 
-        // CLEAN FLAGS: FLAG_NOT_FOCUSABLE prevents taking screen focus until tapped
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.BOTTOM
-            y = 0
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        }
+        var userCustomQuestion = ""
 
         val userLabel = TextView(context).apply {
             text = "Your question:"
@@ -120,58 +103,42 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
-        fun openKeyboard() {
-            isKeyboardOpen = true
-            // Removing NOT_FOCUSABLE without FLAG_ALT_FOCUSABLE_IM so keyboard docks above Navigation Bar
-            params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-            windowManager?.updateViewLayout(card, params)
+        // Strict non-focus window to preserve Navigation Bar completely
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM
+            y = 0
         }
 
-        fun closeKeyboard(question: EditText) {
-            isKeyboardOpen = false
-            val imm = context.getSystemService(InputMethodManager::class.java)
-            imm?.hideSoftInputFromWindow(question.windowToken, 0)
-
-            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-            windowManager?.updateViewLayout(card, params)
-        }
-
-        val question = EditText(context).apply {
-            hint = "Type your question here (optional)"
+        val typeButton = Button(context).apply {
+            text = "✍️ Type Question (Optional)"
+            textSize = 11f
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
-            textSize = 13f
-            setPadding(0, 8, 0, 8)
-            background = null
-            isFocusable = true
-            isFocusableInTouchMode = true
-        }
-
-        question.setOnTouchListener { view, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                if ((params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
-                    openKeyboard()
+            setBackgroundColor(Color.argb(100, 50, 60, 80))
+            setOnClickListener {
+                showTypeQuestionDialog(context) { typedText ->
+                    userCustomQuestion = typedText
+                    if (typedText.isNotEmpty()) {
+                        userLabel.visibility = View.VISIBLE
+                        userQuestionDisplay.text = typedText
+                        userQuestionDisplay.visibility = View.VISIBLE
+                    } else {
+                        userLabel.visibility = View.GONE
+                        userQuestionDisplay.visibility = View.GONE
+                    }
                 }
             }
-            false
         }
-
-        question.setOnFocusChangeListener { view, hasFocus ->
-            if (hasFocus) {
-                view.postDelayed({
-                    val imm = context.getSystemService(InputMethodManager::class.java)
-                    imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-                }, 100)
-            }
-        }
-        card.addView(question)
+        card.addView(typeButton)
 
         val buttonRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 0)
+            setPadding(0, 12, 0, 0)
         }
 
         val askButton = Button(context).apply {
@@ -179,18 +146,6 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                closeKeyboard(question)
-                val userQuestion = question.text.toString().trim()
-
-                if (userQuestion.isNotEmpty()) {
-                    userLabel.visibility = View.VISIBLE
-                    userQuestionDisplay.text = userQuestion
-                    userQuestionDisplay.visibility = View.VISIBLE
-                } else {
-                    userLabel.visibility = View.GONE
-                    userQuestionDisplay.visibility = View.GONE
-                }
-
                 text = "Thinking..."
                 isEnabled = false
                 isBusy = true
@@ -208,7 +163,7 @@ object GuideOverlay {
                                 isBusy = false
                             }
                         } else {
-                            GuideApi.explainVision(userQuestion, image)
+                            GuideApi.explainVision(userCustomQuestion, image)
                                 .onSuccess { answer ->
                                     var clean = answer.trim().replace(Regex("^1\\.\\s*(?![\\s\\S]*\\n\\d+\\.)"), "")
                                     clean = clean.replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
@@ -257,7 +212,6 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                closeKeyboard(question)
                 isBusy = false
                 isPaused = true
                 hide()
@@ -278,9 +232,33 @@ object GuideOverlay {
         overlay = card
     }
 
+    private fun showTypeQuestionDialog(context: Context, onQuestionSet: (String) -> Unit) {
+        val input = EditText(context).apply {
+            hint = "Type your question..."
+            setPadding(32, 32, 32, 32)
+        }
+
+        val dialog = AlertDialog.Builder(context)
+            .setTitle("Ask Guide AI")
+            .setView(input)
+            .setPositiveButton("OK") { d, _ ->
+                onQuestionSet(input.text.toString().trim())
+                d.dismiss()
+            }
+            .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
+            .create()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        } else {
+            @Suppress("DEPRECATION")
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT)
+        }
+        dialog.show()
+    }
+
     fun hide() {
         if (isBusy) return
-        if (isKeyboardOpen) return
         overlay?.let {
             try {
                 windowManager?.removeView(it)
@@ -293,7 +271,6 @@ object GuideOverlay {
 
     fun forceHide() {
         isBusy = false
-        isKeyboardOpen = false
         pauseTimer?.cancel()
         isPaused = false
         overlay?.let {
