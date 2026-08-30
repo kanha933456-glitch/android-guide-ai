@@ -30,7 +30,6 @@ object GuideOverlay {
     var isBusy = false
     private var pauseTimer: CountDownTimer? = null
     var isPaused = false
-    private var isKeyboardActive = false
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
@@ -102,6 +101,18 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
+        val question = EditText(context).apply {
+            hint = "Type your question here (optional)"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
+            textSize = 13f
+            setPadding(20, 20, 20, 20)
+            setBackgroundColor(Color.argb(60, 255, 255, 255))
+            isFocusable = true
+            isFocusableInTouchMode = true
+        }
+
+        // Default Window Layout: NOT_FOCUSABLE guarantees Navigation Bar touches pass through!
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -113,63 +124,19 @@ object GuideOverlay {
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
 
-        val keyboardToggleBtn = Button(context).apply {
-            text = "⌨️ OPEN KEYBOARD"
-            textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val question = EditText(context).apply {
-            hint = "Type your question here (optional)"
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
-            textSize = 13f
-            setPadding(16, 16, 16, 16)
-            setBackgroundColor(Color.argb(60, 255, 255, 255))
-            isFocusable = true
-            isFocusableInTouchMode = true
-        }
-
-        fun openKeyboardInternal() {
+        // Seamless dynamic focus toggle logic
+        fun disableOverlayFocus() {
             try {
-                isKeyboardActive = true
-                keyboardToggleBtn.text = "❌ CLOSE KEYBOARD"
-
-                // Focus enable aur softInputMode adjust pan set karenge taaki overlay keyboard ke upar shift ho
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-                params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
-                windowManager?.updateViewLayout(card, params)
-
-                question.requestFocus()
-                question.postDelayed({
-                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                    imm.showSoftInput(question, InputMethodManager.SHOW_FORCED)
-                }, 100)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        fun closeKeyboardInternal() {
-            try {
-                isKeyboardActive = false
-                keyboardToggleBtn.text = "⌨️ OPEN KEYBOARD"
-
                 val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.hideSoftInputFromWindow(question.windowToken, 0)
                 question.clearFocus()
 
-                // Wapas default flags restore
                 params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
                                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
                                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-                params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
                 windowManager?.updateViewLayout(card, params)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -178,33 +145,29 @@ object GuideOverlay {
 
         question.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                if (!isKeyboardActive) {
-                    openKeyboardInternal()
+                try {
+                    // Enable Focus temporarily for typing
+                    params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
+                                   WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                    windowManager?.updateViewLayout(card, params)
+
+                    question.requestFocus()
+                    question.postDelayed({
+                        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                        imm.showSoftInput(question, InputMethodManager.SHOW_IMPLICIT)
+                    }, 50)
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
             false
         }
 
-        keyboardToggleBtn.setOnClickListener {
-            if (!isKeyboardActive) {
-                openKeyboardInternal()
-            } else {
-                closeKeyboardInternal()
-            }
-        }
-
         card.addView(question)
-        
-        val keyboardRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 8)
-            addView(keyboardToggleBtn)
-        }
-        card.addView(keyboardRow)
 
         val buttonRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 0)
+            setPadding(0, 16, 0, 0)
         }
 
         val askButton = Button(context).apply {
@@ -212,9 +175,7 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                if (isKeyboardActive) {
-                    closeKeyboardInternal()
-                }
+                disableOverlayFocus()
 
                 val userQuestion = question.text.toString().trim()
                 if (userQuestion.isNotEmpty()) {
@@ -292,9 +253,7 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                if (isKeyboardActive) {
-                    closeKeyboardInternal()
-                }
+                disableOverlayFocus()
 
                 isBusy = false
                 isPaused = true
@@ -334,7 +293,6 @@ object GuideOverlay {
 
     fun forceHide() {
         isBusy = false
-        isKeyboardActive = false
         pauseTimer?.cancel()
         isPaused = false
         overlay?.let {
