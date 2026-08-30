@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.os.CountDownTimer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -29,6 +30,7 @@ object GuideOverlay {
     var isBusy = false
     private var pauseTimer: CountDownTimer? = null
     var isPaused = false
+    private var isKeyboardActive = false
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
@@ -100,7 +102,6 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
-        // Default window params with FLAG_NOT_FOCUSABLE to keep Navigation Bar safe
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -112,6 +113,15 @@ object GuideOverlay {
             y = 0
         }
 
+        val keyboardToggleBtn = Button(context).apply {
+            text = "⌨️ OPEN KEYBOARD"
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
         val question = EditText(context).apply {
             hint = "Type your question here (optional)"
             setTextColor(Color.WHITE)
@@ -121,49 +131,60 @@ object GuideOverlay {
             setBackgroundColor(Color.argb(60, 255, 255, 255))
         }
 
-        // Open/Close Keyboard control buttons
-        val keyboardControlRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 8)
-        }
+        fun openKeyboardInternal() {
+            isKeyboardActive = true
+            keyboardToggleBtn.text = "❌ CLOSE KEYBOARD"
 
-        val openKeyBtn = Button(context).apply {
-            text = "⌨️ Open Keyboard"
-            textSize = 10f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener {
-                // Focus remove karke layout update karenge taaki keyboard open ho sake
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                windowManager?.updateViewLayout(card, params)
+            params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            windowManager?.updateViewLayout(card, params)
 
-                question.postDelayed({
-                    question.requestFocus()
-                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                    imm.showSoftInput(question, InputMethodManager.SHOW_IMPLICIT)
-                }, 100)
-            }
-        }
-
-        val closeKeyBtn = Button(context).apply {
-            text = "❌ Close Keyboard"
-            textSize = 10f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener {
+            question.postDelayed({
+                question.requestFocus()
                 val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.hideSoftInputFromWindow(question.windowToken, 0)
-                question.clearFocus()
-
-                // Wapas NOT_FOCUSABLE flag lagayenge taaki Nav bar reset ho jaaye
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                windowManager?.updateViewLayout(card, params)
-            }
+                imm.showSoftInput(question, InputMethodManager.SHOW_IMPLICIT)
+            }, 100)
         }
 
-        keyboardControlRow.addView(openKeyBtn)
-        keyboardControlRow.addView(closeKeyBtn)
+        fun closeKeyboardInternal() {
+            isKeyboardActive = false
+            keyboardToggleBtn.text = "⌨️ OPEN KEYBOARD"
+
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(question.windowToken, 0)
+            question.clearFocus()
+
+            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            windowManager?.updateViewLayout(card, params)
+        }
+
+        // Touch listener on EditText so tapping it also opens keyboard & converts button text
+        question.setOnTouchListener { view, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                if (!isKeyboardActive) {
+                    openKeyboardInternal()
+                }
+            }
+            false
+        }
+
+        // Toggle button click listener
+        keyboardToggleBtn.setOnClickListener {
+            if (!isKeyboardActive) {
+                openKeyboardInternal()
+            } else {
+                closeKeyboardInternal()
+            }
+        }
 
         card.addView(question)
-        card.addView(keyboardControlRow)
+        
+        // Single Keyboard Button Container
+        val keyboardRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 8, 0, 8)
+            addView(keyboardToggleBtn)
+        }
+        card.addView(keyboardRow)
 
         val buttonRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -175,12 +196,9 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                // Keyboard automatic hide on submit
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.hideSoftInputFromWindow(question.windowToken, 0)
-                question.clearFocus()
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                windowManager?.updateViewLayout(card, params)
+                if (isKeyboardActive) {
+                    closeKeyboardInternal()
+                }
 
                 val userQuestion = question.text.toString().trim()
                 if (userQuestion.isNotEmpty()) {
@@ -258,9 +276,10 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.hideSoftInputFromWindow(question.windowToken, 0)
-                
+                if (isKeyboardActive) {
+                    closeKeyboardInternal()
+                }
+
                 isBusy = false
                 isPaused = true
                 hide()
@@ -295,6 +314,7 @@ object GuideOverlay {
 
     fun forceHide() {
         isBusy = false
+        isKeyboardActive = false
         pauseTimer?.cancel()
         isPaused = false
         overlay?.let {
