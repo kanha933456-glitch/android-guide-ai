@@ -7,7 +7,6 @@ import android.graphics.Typeface
 import android.os.CountDownTimer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -108,59 +107,19 @@ object GuideOverlay {
             textSize = 13f
             setPadding(20, 20, 20, 20)
             setBackgroundColor(Color.argb(60, 255, 255, 255))
-            isFocusable = true
-            isFocusableInTouchMode = true
         }
 
-        // Default Window Layout: NOT_FOCUSABLE guarantees Navigation Bar touches pass through!
+        // PERFECT STABLE FLAGS: Pure Touch-Through layout with smooth focus request
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        }
-
-        // Seamless dynamic focus toggle logic
-        fun disableOverlayFocus() {
-            try {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.hideSoftInputFromWindow(question.windowToken, 0)
-                question.clearFocus()
-
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                               WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                               WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-                windowManager?.updateViewLayout(card, params)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        question.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                try {
-                    // Enable Focus temporarily for typing
-                    params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                                   WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-                    windowManager?.updateViewLayout(card, params)
-
-                    question.requestFocus()
-                    question.postDelayed({
-                        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                        imm.showSoftInput(question, InputMethodManager.SHOW_IMPLICIT)
-                    }, 50)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-            false
         }
 
         card.addView(question)
@@ -175,7 +134,9 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                disableOverlayFocus()
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(question.windowToken, 0)
+                question.clearFocus()
 
                 val userQuestion = question.text.toString().trim()
                 if (userQuestion.isNotEmpty()) {
@@ -253,7 +214,9 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                disableOverlayFocus()
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(question.windowToken, 0)
+                question.clearFocus()
 
                 isBusy = false
                 isPaused = true
