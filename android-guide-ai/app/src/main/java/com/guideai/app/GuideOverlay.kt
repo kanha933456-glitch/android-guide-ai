@@ -102,15 +102,20 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
+        // Persistent Window Flags to prevent overlay from hiding during Navigation Bar taps & App switches
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
 
         val keyboardToggleBtn = Button(context).apply {
@@ -129,36 +134,50 @@ object GuideOverlay {
             textSize = 13f
             setPadding(16, 16, 16, 16)
             setBackgroundColor(Color.argb(60, 255, 255, 255))
+            isFocusable = true
+            isFocusableInTouchMode = true
         }
 
         fun openKeyboardInternal() {
-            isKeyboardActive = true
-            keyboardToggleBtn.text = "❌ CLOSE KEYBOARD"
+            try {
+                isKeyboardActive = true
+                keyboardToggleBtn.text = "❌ CLOSE KEYBOARD"
 
-            params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            windowManager?.updateViewLayout(card, params)
+                params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
+                               WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
+                               WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                windowManager?.updateViewLayout(card, params)
 
-            question.postDelayed({
                 question.requestFocus()
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.showSoftInput(question, InputMethodManager.SHOW_IMPLICIT)
-            }, 100)
+                question.postDelayed({
+                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    imm.showSoftInput(question, InputMethodManager.SHOW_FORCED)
+                }, 100)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         fun closeKeyboardInternal() {
-            isKeyboardActive = false
-            keyboardToggleBtn.text = "⌨️ OPEN KEYBOARD"
+            try {
+                isKeyboardActive = false
+                keyboardToggleBtn.text = "⌨️ OPEN KEYBOARD"
 
-            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.hideSoftInputFromWindow(question.windowToken, 0)
-            question.clearFocus()
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(question.windowToken, 0)
+                question.clearFocus()
 
-            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            windowManager?.updateViewLayout(card, params)
+                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+                               WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
+                               WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
+                               WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                windowManager?.updateViewLayout(card, params)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
-        // Touch listener on EditText so tapping it also opens keyboard & converts button text
-        question.setOnTouchListener { view, event ->
+        question.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
                 if (!isKeyboardActive) {
                     openKeyboardInternal()
@@ -167,7 +186,6 @@ object GuideOverlay {
             false
         }
 
-        // Toggle button click listener
         keyboardToggleBtn.setOnClickListener {
             if (!isKeyboardActive) {
                 openKeyboardInternal()
@@ -178,7 +196,6 @@ object GuideOverlay {
 
         card.addView(question)
         
-        // Single Keyboard Button Container
         val keyboardRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 8, 0, 8)
@@ -296,8 +313,12 @@ object GuideOverlay {
         buttonRow.addView(pauseButton)
         card.addView(buttonRow)
 
-        windowManager?.addView(card, params)
-        overlay = card
+        try {
+            windowManager?.addView(card, params)
+            overlay = card
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun hide() {
