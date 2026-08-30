@@ -4,11 +4,9 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
-import android.os.Build
 import android.os.CountDownTimer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -31,13 +29,6 @@ object GuideOverlay {
     var isBusy = false
     private var pauseTimer: CountDownTimer? = null
     var isPaused = false
-
-    // Navigation Bar ki height pixel me nikalne ke liye
-    private fun getNavigationBarHeight(context: Context): Int {
-        val resources = context.resources
-        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
-        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
-    }
 
     fun show(context: Context, stuck: Boolean = false) {
         if (overlay != null) return
@@ -109,20 +100,16 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
-        val navBarHeight = getNavigationBarHeight(context)
-
-        // Overlay ko dynamic offset (y = navBarHeight) de rahe hain
+        // Default window params with FLAG_NOT_FOCUSABLE to keep Navigation Bar safe
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
-            y = navBarHeight // Bottom Nav Bar ke exact upar shift hoga
+            y = 0
         }
 
         val question = EditText(context).apply {
@@ -131,32 +118,56 @@ object GuideOverlay {
             setHintTextColor(Color.LTGRAY)
             textSize = 13f
             setPadding(16, 16, 16, 16)
-            setBackgroundColor(Color.argb(80, 255, 255, 255))
-            isFocusable = true
-            isFocusableInTouchMode = true
+            setBackgroundColor(Color.argb(60, 255, 255, 255))
         }
 
-        question.setOnTouchListener { view, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                if ((params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
-                    params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                    windowManager?.updateViewLayout(card, params)
-                    
-                    view.postDelayed({
-                        view.requestFocus()
-                        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                        imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-                    }, 100)
-                }
-            }
-            false
+        // Open/Close Keyboard control buttons
+        val keyboardControlRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 8, 0, 8)
         }
+
+        val openKeyBtn = Button(context).apply {
+            text = "⌨️ Open Keyboard"
+            textSize = 10f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                // Focus remove karke layout update karenge taaki keyboard open ho sake
+                params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                windowManager?.updateViewLayout(card, params)
+
+                question.postDelayed({
+                    question.requestFocus()
+                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    imm.showSoftInput(question, InputMethodManager.SHOW_IMPLICIT)
+                }, 100)
+            }
+        }
+
+        val closeKeyBtn = Button(context).apply {
+            text = "❌ Close Keyboard"
+            textSize = 10f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(question.windowToken, 0)
+                question.clearFocus()
+
+                // Wapas NOT_FOCUSABLE flag lagayenge taaki Nav bar reset ho jaaye
+                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                windowManager?.updateViewLayout(card, params)
+            }
+        }
+
+        keyboardControlRow.addView(openKeyBtn)
+        keyboardControlRow.addView(closeKeyBtn)
+
         card.addView(question)
+        card.addView(keyboardControlRow)
 
         val buttonRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 12, 0, 0)
+            setPadding(0, 8, 0, 0)
         }
 
         val askButton = Button(context).apply {
@@ -164,14 +175,11 @@ object GuideOverlay {
             textSize = 11f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                // Keyboard hide karke Window ko NOT_FOCUSABLE wapas kar rahe hain
+                // Keyboard automatic hide on submit
                 val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.hideSoftInputFromWindow(question.windowToken, 0)
                 question.clearFocus()
-
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 windowManager?.updateViewLayout(card, params)
 
                 val userQuestion = question.text.toString().trim()
