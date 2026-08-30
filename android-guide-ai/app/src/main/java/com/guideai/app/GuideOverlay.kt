@@ -102,20 +102,18 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
-        // Persistent Window Flags to prevent overlay from hiding during Navigation Bar taps & App switches
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
             y = 0
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
         }
 
         val keyboardToggleBtn = Button(context).apply {
@@ -143,9 +141,9 @@ object GuideOverlay {
                 isKeyboardActive = true
                 keyboardToggleBtn.text = "❌ CLOSE KEYBOARD"
 
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                               WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
-                               WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                // Focus enable aur softInputMode adjust pan set karenge taaki overlay keyboard ke upar shift ho
+                params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
                 windowManager?.updateViewLayout(card, params)
 
                 question.requestFocus()
@@ -167,10 +165,11 @@ object GuideOverlay {
                 imm.hideSoftInputFromWindow(question.windowToken, 0)
                 question.clearFocus()
 
+                // Wapas default flags restore
                 params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
                                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
-                               WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
                 windowManager?.updateViewLayout(card, params)
             } catch (e: Exception) {
                 e.printStackTrace()
