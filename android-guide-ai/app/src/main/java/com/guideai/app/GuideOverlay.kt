@@ -1,16 +1,19 @@
 package com.guideai.app
 
-import android.app.AlertDialog
+import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.CountDownTimer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.View
+import android.view.Window
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -59,6 +62,7 @@ object GuideOverlay {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 24, 32, 24)
             setBackgroundColor(Color.argb(245, 22, 29, 39))
+            fitsSystemWindows = true // Prevents overlapping navigation bar
         }
 
         card.addView(TextView(context).apply {
@@ -103,12 +107,14 @@ object GuideOverlay {
         }
         card.addView(userQuestionDisplay)
 
-        // Strict non-focus window to preserve Navigation Bar completely
+        // NEVER REMOVE FLAG_NOT_FOCUSABLE from Overlay Window to preserve Navigation Bar permanently
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
@@ -121,7 +127,7 @@ object GuideOverlay {
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.argb(100, 50, 60, 80))
             setOnClickListener {
-                showTypeQuestionDialog(context) { typedText ->
+                showSafeInputDialog(context) { typedText ->
                     userCustomQuestion = typedText
                     if (typedText.isNotEmpty()) {
                         userLabel.visibility = View.VISIBLE
@@ -232,29 +238,91 @@ object GuideOverlay {
         overlay = card
     }
 
-    private fun showTypeQuestionDialog(context: Context, onQuestionSet: (String) -> Unit) {
+    private fun showSafeInputDialog(context: Context, onQuestionSet: (String) -> Unit) {
+        val dialog = Dialog(context)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 40, 40, 40)
+            setBackgroundColor(Color.rgb(30, 40, 55))
+        }
+
+        val title = TextView(context).apply {
+            text = "Type your question"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, 0, 0, 20)
+        }
+
         val input = EditText(context).apply {
-            hint = "Type your question..."
-            setPadding(32, 32, 32, 32)
+            hint = "e.g., What does this button do?"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            textSize = 14f
+            setPadding(20, 20, 20, 20)
+            setBackgroundColor(Color.rgb(20, 28, 38))
         }
 
-        val dialog = AlertDialog.Builder(context)
-            .setTitle("Ask Guide AI")
-            .setView(input)
-            .setPositiveButton("OK") { d, _ ->
+        val btnLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 20, 0, 0)
+        }
+
+        val okBtn = Button(context).apply {
+            text = "OK"
+            textSize = 12f
+            setOnClickListener {
                 onQuestionSet(input.text.toString().trim())
-                d.dismiss()
+                dialog.dismiss()
             }
-            .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
-            .create()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-        } else {
-            @Suppress("DEPRECATION")
-            dialog.window?.setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT)
         }
+
+        val cancelBtn = Button(context).apply {
+            text = "Cancel"
+            textSize = 12f
+            setOnClickListener {
+                dialog.dismiss()
+            }
+        }
+
+        btnLayout.addView(cancelBtn)
+        btnLayout.addView(okBtn)
+
+        layout.addView(title)
+        layout.addView(input)
+        layout.addView(btnLayout)
+
+        dialog.setContentView(layout)
+
+        val win = dialog.window
+        if (win != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                win.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+            } else {
+                @Suppress("DEPRECATION")
+                win.setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT)
+            }
+            win.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            
+            // Critical setup for keeping system navigation visible during keyboard pop
+            win.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            win.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            
+            val winParams = win.attributes
+            winParams.gravity = Gravity.CENTER
+            winParams.width = WindowManager.LayoutParams.MATCH_PARENT
+            win.attributes = winParams
+        }
+
         dialog.show()
+
+        input.requestFocus()
+        input.postDelayed({
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+        }, 200)
     }
 
     fun hide() {
