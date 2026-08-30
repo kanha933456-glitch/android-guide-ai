@@ -65,7 +65,7 @@ object GuideOverlay {
         }
 
         card.addView(TextView(context).apply {
-            text = if (stuck) "Guide AI â€” You seem stuck" else "Guide AI is ready"
+            text = if (stuck) "Guide AI — You seem stuck" else "Guide AI is ready"
             setTextColor(Color.rgb(247, 185, 85))
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
