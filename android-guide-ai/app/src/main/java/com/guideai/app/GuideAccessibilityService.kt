@@ -13,14 +13,22 @@ class GuideAccessibilityService : AccessibilityService() {
         "com.google.android.apps.walletnfcrel"
     )
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        // Service connect hote hi overlay dikhao
+        if (GuideSettings.isActive(this)) {
+            GuideOverlay.show(this)
+        }
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!GuideSettings.isActive(this)) {
             GuideOverlay.forceHide()
             return
         }
 
-        val root = rootInActiveWindow ?: return
-        val pkg = root.packageName?.toString() ?: return
+        val root = rootInActiveWindow
+        val pkg = root?.packageName?.toString() ?: event?.packageName?.toString() ?: return
 
         if (pkg in protectedPackages) {
             GuideOverlay.forceHide()
@@ -32,7 +40,6 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val now = System.currentTimeMillis()
 
-        // Handle Package Switching & Stuck State Properly
         if (pkg != lastPackage) {
             lastPackage = pkg
             samePackageCount = 1
@@ -42,8 +49,8 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val stuck = samePackageCount >= 5
 
-        // Show floating icon reliably
-        if (now - lastShownAt > 2000) {
+        // Force show button on any screen event
+        if (now - lastShownAt > 1500) {
             lastShownAt = now
             GuideOverlay.show(this, stuck)
         }
