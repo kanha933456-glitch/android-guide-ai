@@ -1,11 +1,16 @@
 package com.guideai.app
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Typeface
-import android.os.CountDownTimer
+import android.graphics.drawable.ShapeDrawable
+import android.graphics.drawable.shapes.OvalShape
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -30,35 +35,59 @@ object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var bubbleView: View? = null
     var isBusy = false
-    private var pauseTimer: CountDownTimer? = null
-    var isPaused = false
+    private var ttsEngine: TextToSpeech? = null
 
     fun show(context: Context, stuck: Boolean = false) {
-        if (bubbleView != null || isPaused) return
+        if (bubbleView != null) return
         if (!GuideSettings.isActive(context)) return
 
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        initTTS(context)
 
-        // Floating Bubble Icon (Zero Focus, Never Blocks Navigation Bar)
+        // Premium Floating 'G' Badge Creation
+        val size = (54 * context.resources.displayMetrics.density).toInt()
+        val gIconDrawable = object : ShapeDrawable(OvalShape()) {
+            override fun draw(canvas: Canvas) {
+                paint.color = Color.parseColor("#1A1F2C")
+                super.draw(canvas)
+
+                val borderPaint = Paint().apply {
+                    color = Color.parseColor("#F7B955")
+                    style = Paint.Style.STROKE
+                    strokeWidth = 6f
+                    isAntiAlias = true
+                }
+                canvas.drawCircle(bounds.exactCenterX(), bounds.exactCenterY(), bounds.width() / 2f - 3, borderPaint)
+
+                val textPaint = Paint().apply {
+                    color = Color.parseColor("#F7B955")
+                    textSize = bounds.height() * 0.55f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+                val yPos = bounds.exactCenterY() - ((textPaint.descent() + textPaint.ascent()) / 2)
+                canvas.drawText("G", bounds.exactCenterX(), yPos, textPaint)
+            }
+        }
+
         val icon = ImageView(context).apply {
-            setImageResource(android.R.drawable.ic_dialog_info)
-            setBackgroundColor(Color.argb(220, 247, 185, 85))
-            setPadding(20, 20, 20, 20)
+            setImageDrawable(gIconDrawable)
+            setPadding(6, 6, 6, 6)
         }
 
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            size,
+            size,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.END
-            x = 30
-            y = 300
+            x = 40
+            y = 350
         }
 
-        // Drag & Tap Listener for Floating Bubble
         icon.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
@@ -103,94 +132,158 @@ object GuideOverlay {
 
     private fun showGuideDialog(context: Context) {
         val dialog = BottomSheetDialog(context)
-        
-        lateinit var speaker: TextToSpeech
-        speaker = TextToSpeech(context, { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                val indianEnglish = Locale("en", "IN")
-                if (speaker.setLanguage(indianEnglish) == TextToSpeech.LANG_MISSING_DATA) {
-                    speaker.language = Locale.getDefault()
-                }
-                speaker.setSpeechRate(0.95f)
-            }
-        }, "com.google.android.tts")
 
-        val layout = LinearLayout(context).apply {
+        val mainLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(40, 40, 40, 40)
-            setBackgroundColor(Color.argb(255, 22, 29, 39))
+            setPadding(40, 32, 40, 40)
+            setBackgroundColor(Color.parseColor("#121824"))
+        }
+
+        // Header Section
+        val titleRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         val title = TextView(context).apply {
             text = "Guide AI"
-            setTextColor(Color.rgb(247, 185, 85))
-            textSize = 16f
+            setTextColor(Color.parseColor("#F7B955"))
+            textSize = 17f
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val offButton = Button(context).apply {
+            text = "OFF"
+            textSize = 10f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#D32F2F"))
+            layoutParams = LinearLayout.LayoutParams(
+                (65 * context.resources.displayMetrics.density).toInt(),
+                (36 * context.resources.displayMetrics.density).toInt()
+            )
+            setOnClickListener {
+                hideKeyboard(context, this)
+                dialog.dismiss()
+                forceHide()
+            }
+        }
+
+        titleRow.addView(title)
+        titleRow.addView(offButton)
+        mainLayout.addView(titleRow)
+
+        // Guidance Output Box
+        val guidance = TextView(context).apply {
+            text = "Hello! How can I help you today?"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(0, 16, 0, 16)
+        }
+        mainLayout.addView(guidance)
+
+        // User Question Highlight Box (Premium Cyan Theme)
+        val userQuestionContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 16, 20, 16)
+            setBackgroundColor(Color.parseColor("#1E2A38"))
+            visibility = View.GONE
+        }
+        
+        val userQuestionHeader = TextView(context).apply {
+            text = "YOUR QUESTION:"
+            setTextColor(Color.parseColor("#00E5FF"))
+            textSize = 11f
             setTypeface(null, Typeface.BOLD)
         }
-        layout.addView(title)
-
-        val guidance = TextView(context).apply {
-            text = "Ask a question or process this screen."
-            setTextColor(Color.WHITE)
+        
+        val userQuestionText = TextView(context).apply {
+            setTextColor(Color.parseColor("#E0F7FA"))
             textSize = 13f
-            setPadding(0, 10, 0, 20)
+            setTypeface(null, Typeface.BOLD_ITALIC)
         }
-        layout.addView(guidance)
+        
+        userQuestionContainer.addView(userQuestionHeader)
+        userQuestionContainer.addView(userQuestionText)
+        mainLayout.addView(userQuestionContainer)
 
+        // Typing Box
         val questionInput = EditText(context).apply {
-            hint = "Type your question here (optional)"
+            hint = "Ask a question..."
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
-            textSize = 13f
+            setHintTextColor(Color.parseColor("#8A99AD"))
+            textSize = 14f
             setPadding(24, 24, 24, 24)
-            setBackgroundColor(Color.argb(60, 255, 255, 255))
+            setBackgroundColor(Color.parseColor("#263344"))
         }
-        layout.addView(questionInput)
+        mainLayout.addView(questionInput)
 
+        // Action Buttons Row
         val btnRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 20, 0, 0)
+            setPadding(0, 24, 0, 0)
         }
 
         val askBtn = Button(context).apply {
-            text = "Ask About Screen"
-            textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            text = "ASK AGAIN"
+            textSize = 12f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#121824"))
+            setBackgroundColor(Color.parseColor("#F7B955"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = 12
+            }
             setOnClickListener {
-                val userQuestion = questionInput.text.toString().trim()
-                text = "Thinking..."
+                val inputQuery = questionInput.text.toString().trim()
+                hideKeyboard(context, questionInput)
+
+                if (inputQuery.isNotEmpty()) {
+                    userQuestionText.text = "\"$inputQuery\""
+                    userQuestionContainer.visibility = View.VISIBLE
+                }
+
+                text = "THINKING..."
                 isEnabled = false
+                isBusy = true
 
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         val image = ScreenCapture.capture(context)
                         if (image != null) {
-                            GuideApi.explainVision(userQuestion, image)
+                            GuideApi.explainVision(inputQuery, image)
                                 .onSuccess { answer ->
-                                    var clean = answer.trim().replace(Regex("\\*\\*(.*?)\\*\\*"), "($1)")
+                                    val formattedAnswer = formatAIResponse(answer)
                                     CoroutineScope(Dispatchers.Main).launch {
-                                        guidance.text = clean
-                                        guidance.setTypeface(null, Typeface.BOLD)
-                                        if (GuideSettings.voiceEnabled(context)) {
-                                            speaker.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "vision")
-                                        }
-                                        text = "Ask Again"
+                                        guidance.text = formattedAnswer
+                                        speakText(formattedAnswer)
+                                        text = "ASK AGAIN"
                                         isEnabled = true
+                                        isBusy = false
+                                        dialog.dismiss()
                                     }
                                 }
                                 .onFailure {
                                     CoroutineScope(Dispatchers.Main).launch {
-                                        guidance.text = "Failed to load guidance."
-                                        text = "Ask Again"
+                                        guidance.text = "Unable to process screen content. Try again."
+                                        text = "ASK AGAIN"
                                         isEnabled = true
+                                        isBusy = false
                                     }
                                 }
+                        } else {
+                            CoroutineScope(Dispatchers.Main).launch {
+                                guidance.text = "Screen capture failed. Check permissions."
+                                text = "ASK AGAIN"
+                                isEnabled = true
+                                isBusy = false
+                            }
                         }
                     } catch (e: Exception) {
                         CoroutineScope(Dispatchers.Main).launch {
-                            guidance.text = "Something went wrong."
-                            text = "Ask Again"
+                            guidance.text = "Error occurred. Please try again."
+                            text = "ASK AGAIN"
                             isEnabled = true
+                            isBusy = false
                         }
                     }
                 }
@@ -198,23 +291,74 @@ object GuideOverlay {
         }
 
         val closeBtn = Button(context).apply {
-            text = "Close"
-            textSize = 11f
+            text = "CLOSE"
+            textSize = 12f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#37474F"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener { dialog.dismiss() }
+            setOnClickListener {
+                hideKeyboard(context, questionInput)
+                dialog.dismiss()
+            }
         }
 
         btnRow.addView(askBtn)
         btnRow.addView(closeBtn)
-        layout.addView(btnRow)
+        mainLayout.addView(btnRow)
 
-        dialog.setContentView(layout)
+        dialog.setContentView(mainLayout)
         dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         dialog.show()
     }
 
+    private fun hideKeyboard(context: Context, view: View) {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(view.windowToken, 0)
+    }
+
+    private fun initTTS(context: Context) {
+        if (ttsEngine != null) return
+        ttsEngine = TextToSpeech(context, { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val locale = Locale("en", "IN")
+                ttsEngine?.language = locale
+                
+                // Select Google High-Quality Voice if available
+                val voices = ttsEngine?.voices
+                if (voices != null) {
+                    for (voice in voices) {
+                        if (voice.name.contains("google", ignoreCase = true) && voice.locale.language == "en") {
+                            ttsEngine?.voice = voice
+                            break
+                        }
+                    }
+                }
+                ttsEngine?.setSpeechRate(0.92f)
+                ttsEngine?.setPitch(1.0f)
+            }
+        }, "com.google.android.tts")
+    }
+
+    private fun speakText(text: String) {
+        val cleanSpeech = text.replace(Regex("[\\*\\#\\[\\]\\(\\)]"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        val params = Bundle()
+        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+        ttsEngine?.speak(cleanSpeech, TextToSpeech.QUEUE_FLUSH, params, "GUIDE_AI_TTS")
+    }
+
+    private fun formatAIResponse(rawText: String): String {
+        var text = rawText.trim()
+        text = text.replace(Regex("\\*\\*(.*?)\\*\\*"), "“$1”")
+        text = text.replace(Regex("^1\\.\\s*"), "")
+        return text
+    }
+
     fun hide() {
+        if (isBusy) return
         bubbleView?.let {
             try {
                 windowManager?.removeView(it)
@@ -226,6 +370,10 @@ object GuideOverlay {
     }
 
     fun forceHide() {
+        isBusy = false
+        ttsEngine?.stop()
+        ttsEngine?.shutdown()
+        ttsEngine = null
         hide()
         windowManager = null
     }
