@@ -35,10 +35,11 @@ object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var bubbleView: View? = null
     var isBusy = false
+    var isPaused = false // Accessibility Service dependency fix
     private var ttsEngine: TextToSpeech? = null
 
     fun show(context: Context, stuck: Boolean = false) {
-        if (bubbleView != null) return
+        if (bubbleView != null || isPaused) return
         if (!GuideSettings.isActive(context)) return
 
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -371,6 +372,7 @@ object GuideOverlay {
 
     fun forceHide() {
         isBusy = false
+        isPaused = false
         ttsEngine?.stop()
         ttsEngine?.shutdown()
         ttsEngine = null
