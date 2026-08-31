@@ -18,26 +18,32 @@ class GuideAccessibilityService : AccessibilityService() {
             GuideOverlay.forceHide()
             return
         }
+
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString() ?: return
+
         if (pkg in protectedPackages) {
             GuideOverlay.forceHide()
             return
         }
+
         if (!GuideSettings.hasConsent(this)) return
         if (GuideOverlay.isPaused) return
 
         val now = System.currentTimeMillis()
+
+        // Handle Package Switching & Stuck State Properly
         if (pkg != lastPackage) {
-            GuideOverlay.hide()
+            lastPackage = pkg
             samePackageCount = 1
         } else {
             samePackageCount++
         }
-        lastPackage = pkg
 
         val stuck = samePackageCount >= 5
-        if (now - lastShownAt > 3000) {
+
+        // Show floating icon reliably
+        if (now - lastShownAt > 2000) {
             lastShownAt = now
             GuideOverlay.show(this, stuck)
         }
@@ -45,7 +51,9 @@ class GuideAccessibilityService : AccessibilityService() {
 
     private fun collectText(node: AccessibilityNodeInfo, output: StringBuilder) {
         node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { output.append(it).append(' ') }
-        for (index in 0 until node.childCount) node.getChild(index)?.let { collectText(it, output) }
+        for (index in 0 until node.childCount) {
+            node.getChild(index)?.let { collectText(it, output) }
+        }
     }
 
     override fun onInterrupt() = Unit
