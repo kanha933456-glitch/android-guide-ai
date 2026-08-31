@@ -29,6 +29,10 @@ class MainActivity : AppCompatActivity() {
                 // Instantly toggling active status state to resolve double-tap issue
                 GuideSettings.setActive(this, true)
                 ScreenCapture.start(this, result.resultCode, result.data!!)
+                
+                // Direct force show floating overlay icon on capture approval
+                GuideOverlay.show(this)
+                
                 updateToggleText()
                 Toast.makeText(this, "Screen capture ready!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -108,6 +112,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 Toast.makeText(this@MainActivity, "Guide AI is now OFF", Toast.LENGTH_SHORT).show()
             } else {
+                GuideOverlay.show(this@MainActivity)
                 Toast.makeText(this@MainActivity, "Guide AI is now ON — Guide AI ready", Toast.LENGTH_SHORT).show()
             }
             updateToggleText()
@@ -120,6 +125,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (::guideToggleButton.isInitialized) updateToggleText()
+        if (GuideSettings.isActive(this)) {
+            GuideOverlay.show(this)
+        }
     }
 
     private fun updateToggleText() {
