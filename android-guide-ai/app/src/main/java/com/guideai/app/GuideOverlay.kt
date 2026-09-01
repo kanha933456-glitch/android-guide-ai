@@ -253,9 +253,9 @@ object GuideOverlay {
 
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        val image = ScreenCapture.capture(context)
-                        if (image != null) {
-                            GuideApi.explainVision(inputQuery, image)
+                        val imageStr = ScreenCapture.capture(context)
+                        if (!imageStr.isNullOrEmpty()) {
+                            GuideApi.explainVision(inputQuery, imageStr)
                                 .onSuccess { answer ->
                                     val formattedAnswer = formatAIResponse(answer)
                                     CoroutineScope(Dispatchers.Main).launch {
