@@ -8,9 +8,9 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.OvalShape
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
-import android.speech.tts.Voice
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -35,97 +35,106 @@ object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var bubbleView: View? = null
     var isBusy = false
-    var isPaused = false // Accessibility Service dependency fix
+    var isPaused = false
     private var ttsEngine: TextToSpeech? = null
 
     fun show(context: Context, stuck: Boolean = false) {
         if (bubbleView != null || isPaused) return
         if (!GuideSettings.isActive(context)) return
 
-        windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        initTTS(context)
-
-        // Premium Floating 'G' Badge Creation
-        val size = (54 * context.resources.displayMetrics.density).toInt()
-        val gIconDrawable = object : ShapeDrawable(OvalShape()) {
-            override fun draw(canvas: Canvas) {
-                paint.color = Color.parseColor("#1A1F2C")
-                super.draw(canvas)
-
-                val borderPaint = Paint().apply {
-                    color = Color.parseColor("#F7B955")
-                    style = Paint.Style.STROKE
-                    strokeWidth = 6f
-                    isAntiAlias = true
-                }
-                canvas.drawCircle(bounds.exactCenterX(), bounds.exactCenterY(), bounds.width() / 2f - 3, borderPaint)
-
-                val textPaint = Paint().apply {
-                    color = Color.parseColor("#F7B955")
-                    textSize = bounds.height() * 0.55f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    textAlign = Paint.Align.CENTER
-                    isAntiAlias = true
-                }
-                val yPos = bounds.exactCenterY() - ((textPaint.descent() + textPaint.ascent()) / 2)
-                canvas.drawText("G", bounds.exactCenterX(), yPos, textPaint)
-            }
-        }
-
-        val icon = ImageView(context).apply {
-            setImageDrawable(gIconDrawable)
-            setPadding(6, 6, 6, 6)
-        }
-
-        val params = WindowManager.LayoutParams(
-            size,
-            size,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 40
-            y = 350
-        }
-
-        icon.setOnTouchListener(object : View.OnTouchListener {
-            private var initialX = 0
-            private var initialY = 0
-            private var initialTouchX = 0f
-            private var initialTouchY = 0f
-
-            override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initialX = params.x
-                        initialY = params.y
-                        initialTouchX = event.rawX
-                        initialTouchY = event.rawY
-                        return true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        params.x = initialX - (event.rawX - initialTouchX).toInt()
-                        params.y = initialY + (event.rawY - initialTouchY).toInt()
-                        windowManager?.updateViewLayout(bubbleView, params)
-                        return true
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        val diffX = Math.abs(event.rawX - initialTouchX)
-                        val diffY = Math.abs(event.rawY - initialTouchY)
-                        if (diffX < 10 && diffY < 10) {
-                            showGuideDialog(context)
-                        }
-                        return true
-                    }
-                }
-                return false
-            }
-        })
+        val appContext = context.applicationContext
 
         try {
+            windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            initTTS(appContext)
+
+            val size = (58 * appContext.resources.displayMetrics.density).toInt()
+            val gIconDrawable = object : ShapeDrawable(OvalShape()) {
+                override fun draw(canvas: Canvas) {
+                    paint.color = Color.parseColor("#1A1F2C")
+                    super.draw(canvas)
+
+                    val borderPaint = Paint().apply {
+                        color = Color.parseColor("#F7B955")
+                        style = Paint.Style.STROKE
+                        strokeWidth = 6f
+                        isAntiAlias = true
+                    }
+                    canvas.drawCircle(bounds.exactCenterX(), bounds.exactCenterY(), bounds.width() / 2f - 3, borderPaint)
+
+                    val textPaint = Paint().apply {
+                        color = Color.parseColor("#F7B955")
+                        textSize = bounds.height() * 0.55f
+                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                        textAlign = Paint.Align.CENTER
+                        isAntiAlias = true
+                    }
+                    val yPos = bounds.exactCenterY() - ((textPaint.descent() + textPaint.ascent()) / 2)
+                    canvas.drawText("G", bounds.exactCenterX(), yPos, textPaint)
+                }
+            }
+
+            val icon = ImageView(appContext).apply {
+                setImageDrawable(gIconDrawable)
+                setPadding(6, 6, 6, 6)
+            }
+
+            val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+
+            val params = WindowManager.LayoutParams(
+                size,
+                size,
+                layoutType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                x = 40
+                y = 400
+            }
+
+            icon.setOnTouchListener(object : View.OnTouchListener {
+                private var initialX = 0
+                private var initialY = 0
+                private var initialTouchX = 0f
+                private var initialTouchY = 0f
+
+                override fun onTouch(v: View, event: MotionEvent): Boolean {
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            initialX = params.x
+                            initialY = params.y
+                            initialTouchX = event.rawX
+                            initialTouchY = event.rawY
+                            return true
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            params.x = initialX - (event.rawX - initialTouchX).toInt()
+                            params.y = initialY + (event.rawY - initialTouchY).toInt()
+                            windowManager?.updateViewLayout(bubbleView, params)
+                            return true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            val diffX = Math.abs(event.rawX - initialTouchX)
+                            val diffY = Math.abs(event.rawY - initialTouchY)
+                            if (diffX < 15 && diffY < 15) {
+                                showGuideDialog(context)
+                            }
+                            return true
+                        }
+                    }
+                    return false
+                }
+            })
+
             windowManager?.addView(icon, params)
             bubbleView = icon
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -140,7 +149,6 @@ object GuideOverlay {
             setBackgroundColor(Color.parseColor("#121824"))
         }
 
-        // Header Section
         val titleRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -174,7 +182,6 @@ object GuideOverlay {
         titleRow.addView(offButton)
         mainLayout.addView(titleRow)
 
-        // Guidance Output Box
         val guidance = TextView(context).apply {
             text = "Hello! How can I help you today?"
             setTextColor(Color.WHITE)
@@ -183,7 +190,6 @@ object GuideOverlay {
         }
         mainLayout.addView(guidance)
 
-        // User Question Highlight Box (Premium Cyan Theme)
         val userQuestionContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20, 16, 20, 16)
@@ -208,7 +214,6 @@ object GuideOverlay {
         userQuestionContainer.addView(userQuestionText)
         mainLayout.addView(userQuestionContainer)
 
-        // Typing Box
         val questionInput = EditText(context).apply {
             hint = "Ask a question..."
             setTextColor(Color.WHITE)
@@ -219,7 +224,6 @@ object GuideOverlay {
         }
         mainLayout.addView(questionInput)
 
-        // Action Buttons Row
         val btnRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 24, 0, 0)
@@ -309,7 +313,13 @@ object GuideOverlay {
         mainLayout.addView(btnRow)
 
         dialog.setContentView(mainLayout)
-        dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        val dialogType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        dialog.window?.setType(dialogType)
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         dialog.show()
     }
@@ -325,17 +335,6 @@ object GuideOverlay {
             if (status == TextToSpeech.SUCCESS) {
                 val locale = Locale("en", "IN")
                 ttsEngine?.language = locale
-                
-                // Select Google High-Quality Voice if available
-                val voices = ttsEngine?.voices
-                if (voices != null) {
-                    for (voice in voices) {
-                        if (voice.name.contains("google", ignoreCase = true) && voice.locale.language == "en") {
-                            ttsEngine?.voice = voice
-                            break
-                        }
-                    }
-                }
                 ttsEngine?.setSpeechRate(0.92f)
                 ttsEngine?.setPitch(1.0f)
             }
