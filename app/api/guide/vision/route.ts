@@ -8,44 +8,33 @@ export async function POST(req: Request) {
     const { image, question } = body;
 
     if (!image) {
-      return Response.json({ error: 'Image parameter missing' }, { status: 400 });
+      return Response.json({ error: 'IMAGE_MISSING', message: 'No image provided' }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: 'API key not configured' }, { status: 500 });
+      return Response.json({ error: 'NO_API_KEY', message: 'GEMINI_API_KEY is not set in Vercel' }, { status: 500 });
     }
 
-    // Direct Base64 cleanup
     const cleanBase64 = image.replace(/^data:image\/\w+;base64,/, '');
-
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Standard model configuration
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-    const promptText = question && question.trim().length > 0 
-      ? question 
-      : "Explain what is visible on this screen clearly and concisely.";
+    const promptText = question && question.trim().length > 0 ? question : "Explain what is visible on screen";
 
     const result = await model.generateContent([
       promptText,
-      {
-        inlineData: {
-          data: cleanBase64,
-          mimeType: 'image/jpeg'
-        }
-      }
+      { inlineData: { data: cleanBase64, mimeType: 'image/jpeg' } }
     ]);
 
-    const guidance = result.response.text();
-
-    return Response.json({ guidance });
+    return Response.json({ guidance: result.response.text() });
 
   } catch (error: any) {
-    console.error("Vision Processing Error:", error);
-    return Response.json(
-      { error: "Vision guide failed", details: error?.message || "Internal server error" }, 
-      { status: 500 }
-    );
+    // Exact error response for debugging
+    return Response.json({
+      error: 'SERVER_EXCEPTION',
+      message: error?.message || 'Unknown server error',
+      stack: error?.stack || ''
+    }, { status: 500 });
   }
 }
