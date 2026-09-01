@@ -1,13 +1,10 @@
 package com.guideai.app
 
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Typeface
-import android.graphics.drawable.ShapeDrawable
-import android.graphics.drawable.shapes.OvalShape
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
@@ -18,7 +15,6 @@ import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -48,35 +44,26 @@ object GuideOverlay {
             windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             initTTS(appContext)
 
-            val size = (58 * appContext.resources.displayMetrics.density).toInt()
-            val gIconDrawable = object : ShapeDrawable(OvalShape()) {
-                override fun draw(canvas: Canvas) {
-                    paint.color = Color.parseColor("#1A1F2C")
-                    super.draw(canvas)
+            val size = (56 * appContext.resources.displayMetrics.density).toInt()
 
-                    val borderPaint = Paint().apply {
-                        color = Color.parseColor("#F7B955")
-                        style = Paint.Style.STROKE
-                        strokeWidth = 6f
-                        isAntiAlias = true
-                    }
-                    canvas.drawCircle(bounds.exactCenterX(), bounds.exactCenterY(), bounds.width() / 2f - 3, borderPaint)
-
-                    val textPaint = Paint().apply {
-                        color = Color.parseColor("#F7B955")
-                        textSize = bounds.height() * 0.55f
-                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        textAlign = Paint.Align.CENTER
-                        isAntiAlias = true
-                    }
-                    val yPos = bounds.exactCenterY() - ((textPaint.descent() + textPaint.ascent()) / 2)
-                    canvas.drawText("G", bounds.exactCenterX(), yPos, textPaint)
+            // High-visibility, solid colored floating G icon
+            val icon = Button(appContext).apply {
+                text = "G"
+                setTextColor(Color.parseColor("#121824"))
+                textSize = 22f
+                setTypeface(null, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, 0)
+                
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#F7B955"))
+                    setStroke(6, Color.parseColor("#FFFFFF"))
                 }
-            }
-
-            val icon = ImageView(appContext).apply {
-                setImageDrawable(gIconDrawable)
-                setPadding(6, 6, 6, 6)
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    elevation = 16f
+                }
             }
 
             val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
