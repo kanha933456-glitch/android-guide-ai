@@ -18,8 +18,9 @@ export async function POST(req: Request) {
       ? question 
       : "Explain what is visible on this screen clearly and concisely.";
 
+    // Updated model to gemini-3.6-flash as per error response
     const { text } = await generateText({
-      model: google('gemini-2.0-flash'),
+      model: google('gemini-3.6-flash'),
       messages: [
         {
           role: 'user',
