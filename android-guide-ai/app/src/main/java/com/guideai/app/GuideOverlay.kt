@@ -230,7 +230,7 @@ object GuideOverlay {
         }
 
         val askBtn = Button(context).apply {
-            text = "ASK AGAIN"
+            text = "ASK ABOUT SCREEN"
             textSize = 12f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#121824"))
@@ -261,32 +261,32 @@ object GuideOverlay {
                                     CoroutineScope(Dispatchers.Main).launch {
                                         guidance.text = formattedAnswer
                                         speakText(formattedAnswer)
-                                        text = "ASK AGAIN"
+                                        text = "ASK ABOUT SCREEN"
                                         isEnabled = true
                                         isBusy = false
                                         dialog.dismiss()
                                     }
                                 }
-                                .onFailure {
+                                .onFailure { exception ->
                                     CoroutineScope(Dispatchers.Main).launch {
-                                        guidance.text = "Unable to process screen content. Try again."
-                                        text = "ASK AGAIN"
+                                        guidance.text = "ERROR: ${exception.message}"
+                                        text = "ASK ABOUT SCREEN"
                                         isEnabled = true
                                         isBusy = false
                                     }
                                 }
                         } else {
                             CoroutineScope(Dispatchers.Main).launch {
-                                guidance.text = "Screen capture failed. Check permissions."
-                                text = "ASK AGAIN"
+                                guidance.text = "ERROR: Screen capture frame empty"
+                                text = "ASK ABOUT SCREEN"
                                 isEnabled = true
                                 isBusy = false
                             }
                         }
                     } catch (e: Exception) {
                         CoroutineScope(Dispatchers.Main).launch {
-                            guidance.text = "Error occurred. Please try again."
-                            text = "ASK AGAIN"
+                            guidance.text = "ERROR: ${e.localizedMessage}"
+                            text = "ASK ABOUT SCREEN"
                             isEnabled = true
                             isBusy = false
                         }
