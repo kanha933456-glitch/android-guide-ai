@@ -18,6 +18,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import java.util.Locale
@@ -180,13 +181,26 @@ object GuideOverlay {
         titleRow.addView(offButton)
         mainLayout.addView(titleRow)
 
+        // Response Container ko Scrollable banaya hai max height limit ke sath
+        val scrollContainer = ScrollView(context).apply {
+            val maxHeight = (220 * context.resources.displayMetrics.density).toInt()
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                height = maxHeight
+            }
+            isVerticalScrollBarEnabled = true
+        }
+
         val guidance = TextView(context).apply {
             text = "Hello! How can I help you today?"
             setTextColor(Color.WHITE)
             textSize = 14f
             setPadding(0, 16, 0, 16)
         }
-        mainLayout.addView(guidance)
+        scrollContainer.addView(guidance)
+        mainLayout.addView(scrollContainer)
 
         val userQuestionContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -244,10 +258,11 @@ object GuideOverlay {
             override fun afterTextChanged(s: Editable?) {
                 if (!isBusy) {
                     val input = s?.toString()?.trim() ?: ""
-                    if (input.isNotEmpty()) {
-                        askBtn.text = "ASK ANYTHING"
-                    } else if (hasAnsweredOnce) {
+                    // Dynamic state sync
+                    if (hasAnsweredOnce) {
                         askBtn.text = "ASK AGAIN"
+                    } else if (input.isNotEmpty()) {
+                        askBtn.text = "ASK ANYTHING"
                     } else {
                         askBtn.text = "ASK ABOUT SCREEN"
                     }
@@ -281,7 +296,7 @@ object GuideOverlay {
                                         speakText(formattedAnswer)
                                     }
                                     hasAnsweredOnce = true
-                                    askBtn.text = if (questionInput.text.toString().trim().isNotEmpty()) "ASK ANYTHING" else "ASK AGAIN"
+                                    askBtn.text = "ASK AGAIN"
                                     askBtn.isEnabled = true
                                     isBusy = false
                                     hideKeyboard(context, questionInput)
@@ -322,17 +337,9 @@ object GuideOverlay {
             setBackgroundColor(Color.parseColor("#37474F"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                val isKeyboardFocused = questionInput.hasFocus()
-
-                if (isKeyboardFocused) {
-                    hideKeyboard(context, questionInput)
-                    questionInput.clearFocus()
-                } else {
-                    hideKeyboard(context, questionInput)
-                    dialog.dismiss()
-                    activeDialog = null
-                }
+                hideKeyboard(context, questionInput)
+                dialog.dismiss()
+                activeDialog = null
             }
         }
 
@@ -347,10 +354,31 @@ object GuideOverlay {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-        dialog.window?.setType(dialogType)
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         
-        // Dynamic touch behavior: Overlay screen par touch karne par nahi hatega
+        dialog.window?.let { window ->
+            window.setType(dialogType)
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            
+            // System flags for Background touch pass-through & Auto keyboard dismissal
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+            )
+            
+            // Intercept touches outside to close when keyboard active
+            window.decorView.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_OUTSIDE) {
+                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    if (imm.isAcceptingText) {
+                        hideKeyboard(context, questionInput)
+                        dialog.dismiss()
+                        activeDialog = null
+                    }
+                }
+                false
+            }
+        }
+        
         dialog.setCanceledOnTouchOutside(false)
         dialog.setCancelable(false)
 
@@ -391,12 +419,17 @@ object GuideOverlay {
 
     private fun formatAIResponse(rawText: String): String {
         var text = rawText.trim()
+        
+        // Remove markdown artifacts, double bullets, and divider lines
         text = text.replace(Regex("###\\s*\\d+\\.\\s*"), "")
             .replace(Regex("###\\s*"), "")
+            .replace(Regex("---|___|\\*\\*\\*"), "")
+            .replace(Regex("••+"), "•")
+            .replace(Regex("··+"), "•")
             .replace(Regex("\\*\\s*\"?"), "• ")
             .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
-            .replace(Regex("This screen shows.*?\n\n"), "")
-            .replace(Regex("Here is the breakdown of what is visible:\n\n"), "")
+            .replace(Regex("(?i)Foreground Overlay.*?\n\n"), "")
+            .replace(Regex("(?i)This screenshot shows.*?\n\n"), "")
             .replace(Regex("\n{3,}"), "\n\n")
             .trim()
             
