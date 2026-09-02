@@ -28,7 +28,7 @@ IMPORTANT RULES:
 
     // Updated to working SDK string
     const { text } = await generateText({
-      model: google('gemini-2.0-flash'),
+      model: google('gemini-3.5-flash-lite'),
       system: systemInstruction || defaultSystem,
       messages: [
         {
