@@ -28,7 +28,7 @@ IMPORTANT RULES:
 5. No useless descriptions like 'This screen shows', 'Foreground overlay', or bullet lines like '---'.`;
 
     const { text } = await generateText({
-      model: google('gemini-3.6-flash'),
+      model: google('gemini-1.5-flash'),
       system: systemInstruction || defaultSystem,
       messages: [
         {
