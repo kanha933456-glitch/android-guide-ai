@@ -7,6 +7,17 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object GuideApi {
+
+    private val SYSTEM_INSTRUCTION = """
+        You are Guide AI, a direct action assistant.
+        IMPORTANT RULES:
+        1. NEVER describe the 'Guide AI' floating overlay UI or your own dialog buttons. Ignore the overlay UI in the screenshot completely.
+        2. Focus ONLY on the background app content behind the overlay.
+        3. If user clicks 'ASK ABOUT SCREEN' (empty query), detect what main item/question/game/quiz is on screen and answer it DIRECTLY in under 30 words in Hindi/Hinglish.
+        4. If there is a question/quiz on screen (like a YouTube Poll), solve it and tell the correct option directly.
+        5. No useless descriptions like 'This screen shows', 'Foreground overlay', or bullet lines like '---'.
+    """.trimIndent()
+
     suspend fun explainVision(question: String, image: String): Result<String> = withContext(Dispatchers.IO) {
         val endpoint = BuildConfig.GUIDE_API_URL.replace("/api/guide", "/api/guide/vision")
         
@@ -28,9 +39,11 @@ object GuideApi {
                 doOutput = true
             }
 
+            // Payload me systemInstruction bhi bhej rahe hain
             val jsonPayload = JSONObject().apply {
                 put("image", formattedImage)
                 put("question", question)
+                put("systemInstruction", SYSTEM_INSTRUCTION)
             }.toString()
 
             connection.outputStream.use { os ->
