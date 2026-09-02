@@ -132,6 +132,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateToggleText() {
         val isActive = GuideSettings.isActive(this)
-        guideToggleButton.text = if (isActive) "Guide AI is ON — tap to turn OFF" else "Guide AI is OFF — tap to turn ON"
+        guideToggleButton.text = if (isActive) "GUIDE AI IS ON — TAP TO TURN OFF" else "GUIDE AI IS OFF — TAP TO TURN ON"
     }
 }
