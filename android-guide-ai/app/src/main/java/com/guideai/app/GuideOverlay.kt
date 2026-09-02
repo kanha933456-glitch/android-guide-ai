@@ -41,8 +41,6 @@ object GuideOverlay {
         }
 
         val appContext = context.applicationContext
-
-        // Completely clear old bubble view if present to prevent residual UI bugs
         hideBubbleOnly()
 
         try {
@@ -132,7 +130,6 @@ object GuideOverlay {
     }
 
     private fun showGuideDialog(context: Context) {
-        // Purana dialog remove karke fresh dialog launch karo
         activeDialog?.dismiss()
         activeDialog = null
         hasAnsweredOnce = false
@@ -349,7 +346,6 @@ object GuideOverlay {
         dialog.window?.setType(dialogType)
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         
-        // Prevent dismissal on touching screen outside overlay
         dialog.setCanceledOnTouchOutside(false)
         dialog.setCancelable(false)
 
