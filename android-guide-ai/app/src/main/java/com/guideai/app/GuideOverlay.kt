@@ -45,7 +45,9 @@ object GuideOverlay {
 
         try {
             windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            initTTS(appContext)
+            if (GuideSettings.voiceEnabled(appContext)) {
+                initTTS(appContext)
+            }
 
             val size = (56 * appContext.resources.displayMetrics.density).toInt()
 
@@ -275,7 +277,9 @@ object GuideOverlay {
                                 val formattedAnswer = formatAIResponse(answer)
                                 CoroutineScope(Dispatchers.Main).launch {
                                     guidance.text = formattedAnswer
-                                    speakText(formattedAnswer)
+                                    if (GuideSettings.voiceEnabled(context)) {
+                                        speakText(formattedAnswer)
+                                    }
                                     hasAnsweredOnce = true
                                     askBtn.text = if (questionInput.text.toString().trim().isNotEmpty()) "ASK ANYTHING" else "ASK AGAIN"
                                     askBtn.isEnabled = true
@@ -346,6 +350,7 @@ object GuideOverlay {
         dialog.window?.setType(dialogType)
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         
+        // Dynamic touch behavior: Overlay screen par touch karne par nahi hatega
         dialog.setCanceledOnTouchOutside(false)
         dialog.setCancelable(false)
 
