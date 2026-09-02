@@ -26,13 +26,9 @@ class MainActivity : AppCompatActivity() {
     private val captureRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
             try {
-                // Instantly toggling active status state to resolve double-tap issue
                 GuideSettings.setActive(this, true)
                 ScreenCapture.start(this, result.resultCode, result.data!!)
-                
-                // Direct force show floating overlay icon on capture approval
                 GuideOverlay.show(this)
-                
                 updateToggleText()
                 Toast.makeText(this, "Screen capture ready!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -97,6 +93,12 @@ class MainActivity : AppCompatActivity() {
 
         guideToggleButton = Button(this)
         layout.addView(guideToggleButton)
+
+        // Force OFF by default if not set explicitly
+        if (!GuideSettings.hasActiveKey(this)) {
+            GuideSettings.setActive(this, false)
+        }
+        
         updateToggleText()
         
         guideToggleButton.setOnClickListener {
@@ -127,6 +129,8 @@ class MainActivity : AppCompatActivity() {
         if (::guideToggleButton.isInitialized) updateToggleText()
         if (GuideSettings.isActive(this)) {
             GuideOverlay.show(this)
+        } else {
+            GuideOverlay.forceHide()
         }
     }
 
