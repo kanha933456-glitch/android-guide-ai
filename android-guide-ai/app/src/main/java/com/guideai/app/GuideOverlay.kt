@@ -28,24 +28,22 @@ import kotlinx.coroutines.launch
 object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var bubbleView: View? = null
+    private var activeDialog: BottomSheetDialog? = null
     var isBusy = false
     var isPaused = false
     private var ttsEngine: TextToSpeech? = null
     private var hasAnsweredOnce = false
 
     fun show(context: Context, stuck: Boolean = false) {
-        if (!GuideSettings.isActive(context)) return
+        if (!GuideSettings.isActive(context)) {
+            forceHide()
+            return
+        }
 
         val appContext = context.applicationContext
 
-        if (bubbleView != null) {
-            try {
-                windowManager?.removeView(bubbleView)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            bubbleView = null
-        }
+        // Completely clear old bubble view if present to prevent residual UI bugs
+        hideBubbleOnly()
 
         try {
             windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -134,8 +132,13 @@ object GuideOverlay {
     }
 
     private fun showGuideDialog(context: Context) {
-        val dialog = BottomSheetDialog(context)
+        // Purana dialog remove karke fresh dialog launch karo
+        activeDialog?.dismiss()
+        activeDialog = null
         hasAnsweredOnce = false
+
+        val dialog = BottomSheetDialog(context)
+        activeDialog = dialog
 
         val mainLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -168,6 +171,7 @@ object GuideOverlay {
             setOnClickListener {
                 hideKeyboard(context, this)
                 dialog.dismiss()
+                activeDialog = null
                 GuideSettings.setActive(context, false)
                 forceHide()
             }
@@ -235,7 +239,6 @@ object GuideOverlay {
             }
         }
 
-        // Dynamic text watcher for button label
         questionInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -318,8 +321,17 @@ object GuideOverlay {
             setBackgroundColor(Color.parseColor("#37474F"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                hideKeyboard(context, questionInput)
-                dialog.dismiss()
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                val isKeyboardFocused = questionInput.hasFocus()
+
+                if (isKeyboardFocused) {
+                    hideKeyboard(context, questionInput)
+                    questionInput.clearFocus()
+                } else {
+                    hideKeyboard(context, questionInput)
+                    dialog.dismiss()
+                    activeDialog = null
+                }
             }
         }
 
@@ -337,9 +349,16 @@ object GuideOverlay {
         dialog.window?.setType(dialogType)
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         
-        // Touch outside dismiss behavior
-        dialog.setCanceledOnTouchOutside(true)
-        
+        // Prevent dismissal on touching screen outside overlay
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.setCancelable(false)
+
+        dialog.setOnDismissListener {
+            if (activeDialog == dialog) {
+                activeDialog = null
+            }
+        }
+
         dialog.show()
     }
 
@@ -371,13 +390,19 @@ object GuideOverlay {
 
     private fun formatAIResponse(rawText: String): String {
         var text = rawText.trim()
-        text = text.replace(Regex("\\*\\*(.*?)\\*\\*"), "“$1”")
-        text = text.replace(Regex("^1\\.\\s*"), "")
-        return text
+        text = text.replace(Regex("###\\s*\\d+\\.\\s*"), "")
+            .replace(Regex("###\\s*"), "")
+            .replace(Regex("\\*\\s*\"?"), "• ")
+            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
+            .replace(Regex("This screen shows.*?\n\n"), "")
+            .replace(Regex("Here is the breakdown of what is visible:\n\n"), "")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+            
+        return if (text.isEmpty()) rawText.trim() else text
     }
 
-    fun hide() {
-        if (isBusy) return
+    private fun hideBubbleOnly() {
         bubbleView?.let {
             try {
                 windowManager?.removeView(it)
@@ -388,13 +413,22 @@ object GuideOverlay {
         bubbleView = null
     }
 
+    fun hide() {
+        if (isBusy) return
+        activeDialog?.dismiss()
+        activeDialog = null
+        hideBubbleOnly()
+    }
+
     fun forceHide() {
         isBusy = false
         isPaused = false
         ttsEngine?.stop()
         ttsEngine?.shutdown()
         ttsEngine = null
-        hide()
+        activeDialog?.dismiss()
+        activeDialog = null
+        hideBubbleOnly()
         windowManager = null
     }
 }
