@@ -18,7 +18,6 @@ export async function POST(req: Request) {
       ? question 
       : "Detect the main item, question, or task on the background screen and provide direct, actionable help or the answer.";
 
-    // Default system prompt if not passed from client
     const defaultSystem = `You are Guide AI, a direct action assistant.
 IMPORTANT RULES:
 1. NEVER describe the 'Guide AI' floating overlay UI or your own dialog buttons. Ignore the overlay UI in the screenshot completely.
@@ -27,8 +26,9 @@ IMPORTANT RULES:
 4. If there is a question/quiz on screen (like a YouTube Poll), solve it and tell the correct option directly.
 5. No useless descriptions like 'This screen shows', 'Foreground overlay', or bullet lines like '---'.`;
 
+    // Updated to working SDK string
     const { text } = await generateText({
-      model: google('gemini-1.5-flash'),
+      model: google('gemini-2.0-flash'),
       system: systemInstruction || defaultSystem,
       messages: [
         {
