@@ -8,6 +8,8 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -23,22 +25,27 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-import com.guideai.app.GuideSettings
-import com.guideai.app.ScreenCapture
-import com.guideai.app.GuideApi
-
 object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var bubbleView: View? = null
     var isBusy = false
     var isPaused = false
     private var ttsEngine: TextToSpeech? = null
+    private var hasAnsweredOnce = false
 
     fun show(context: Context, stuck: Boolean = false) {
-        if (bubbleView != null || isPaused) return
         if (!GuideSettings.isActive(context)) return
 
         val appContext = context.applicationContext
+
+        if (bubbleView != null) {
+            try {
+                windowManager?.removeView(bubbleView)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            bubbleView = null
+        }
 
         try {
             windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -46,7 +53,6 @@ object GuideOverlay {
 
             val size = (56 * appContext.resources.displayMetrics.density).toInt()
 
-            // High-visibility, solid colored floating G icon
             val icon = Button(appContext).apply {
                 text = "G"
                 setTextColor(Color.parseColor("#121824"))
@@ -129,6 +135,7 @@ object GuideOverlay {
 
     private fun showGuideDialog(context: Context) {
         val dialog = BottomSheetDialog(context)
+        hasAnsweredOnce = false
 
         val mainLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -161,6 +168,7 @@ object GuideOverlay {
             setOnClickListener {
                 hideKeyboard(context, this)
                 dialog.dismiss()
+                GuideSettings.setActive(context, false)
                 forceHide()
             }
         }
@@ -225,58 +233,78 @@ object GuideOverlay {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = 12
             }
-            setOnClickListener {
-                val inputQuery = questionInput.text.toString().trim()
-                hideKeyboard(context, questionInput)
+        }
 
-                if (inputQuery.isNotEmpty()) {
-                    userQuestionText.text = "\"$inputQuery\""
-                    userQuestionContainer.visibility = View.VISIBLE
+        // Dynamic text watcher for button label
+        questionInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (!isBusy) {
+                    val input = s?.toString()?.trim() ?: ""
+                    if (input.isNotEmpty()) {
+                        askBtn.text = "ASK ANYTHING"
+                    } else if (hasAnsweredOnce) {
+                        askBtn.text = "ASK AGAIN"
+                    } else {
+                        askBtn.text = "ASK ABOUT SCREEN"
+                    }
                 }
+            }
+        })
 
-                text = "THINKING..."
-                isEnabled = false
-                isBusy = true
+        askBtn.setOnClickListener {
+            val inputQuery = questionInput.text.toString().trim()
+            hideKeyboard(context, questionInput)
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val imageStr = ScreenCapture.capture(context)
-                        if (!imageStr.isNullOrEmpty()) {
-                            GuideApi.explainVision(inputQuery, imageStr)
-                                .onSuccess { answer ->
-                                    val formattedAnswer = formatAIResponse(answer)
-                                    CoroutineScope(Dispatchers.Main).launch {
-                                        guidance.text = formattedAnswer
-                                        speakText(formattedAnswer)
-                                        text = "ASK ABOUT SCREEN"
-                                        isEnabled = true
-                                        isBusy = false
-                                        dialog.dismiss()
-                                    }
+            if (inputQuery.isNotEmpty()) {
+                userQuestionText.text = "\"$inputQuery\""
+                userQuestionContainer.visibility = View.VISIBLE
+            }
+
+            askBtn.text = "THINKING..."
+            askBtn.isEnabled = false
+            isBusy = true
+
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val imageStr = ScreenCapture.capture(context)
+                    if (!imageStr.isNullOrEmpty()) {
+                        GuideApi.explainVision(inputQuery, imageStr)
+                            .onSuccess { answer ->
+                                val formattedAnswer = formatAIResponse(answer)
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    guidance.text = formattedAnswer
+                                    speakText(formattedAnswer)
+                                    hasAnsweredOnce = true
+                                    askBtn.text = if (questionInput.text.toString().trim().isNotEmpty()) "ASK ANYTHING" else "ASK AGAIN"
+                                    askBtn.isEnabled = true
+                                    isBusy = false
+                                    hideKeyboard(context, questionInput)
                                 }
-                                .onFailure { exception ->
-                                    CoroutineScope(Dispatchers.Main).launch {
-                                        guidance.text = "ERROR: ${exception.message}"
-                                        text = "ASK ABOUT SCREEN"
-                                        isEnabled = true
-                                        isBusy = false
-                                    }
-                                }
-                        } else {
-                            CoroutineScope(Dispatchers.Main).launch {
-                                guidance.text = "ERROR: Screen capture frame empty"
-                                text = "ASK ABOUT SCREEN"
-                                isEnabled = true
-                                isBusy = false
                             }
-                        }
-                    } catch (e: Exception) {
+                            .onFailure { exception ->
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    guidance.text = "ERROR: ${exception.message}"
+                                    askBtn.text = "ASK AGAIN"
+                                    askBtn.isEnabled = true
+                                    isBusy = false
+                                }
+                            }
+                    } else {
                         CoroutineScope(Dispatchers.Main).launch {
-                            guidance.text = "ERROR: ${e.localizedMessage}"
-                            text = "ASK ABOUT SCREEN"
-                            isEnabled = true
+                            guidance.text = "ERROR: Screen capture frame empty"
+                            askBtn.text = "ASK AGAIN"
+                            askBtn.isEnabled = true
                             isBusy = false
                         }
+                    }
+                } catch (e: Exception) {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        guidance.text = "ERROR: ${e.localizedMessage}"
+                        askBtn.text = "ASK AGAIN"
+                        askBtn.isEnabled = true
+                        isBusy = false
                     }
                 }
             }
@@ -308,6 +336,10 @@ object GuideOverlay {
         }
         dialog.window?.setType(dialogType)
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        
+        // Touch outside dismiss behavior
+        dialog.setCanceledOnTouchOutside(true)
+        
         dialog.show()
     }
 
