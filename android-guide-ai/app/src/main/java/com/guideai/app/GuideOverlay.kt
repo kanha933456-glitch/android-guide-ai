@@ -3,297 +3,473 @@ package com.guideai.app
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.text.Editable
-import android.text.Html
 import android.text.TextWatcher
-import android.util.TypedValue
-import android.view.*
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
-import android.widget.*
-import kotlinx.coroutines.*
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 object GuideOverlay {
-
     private var windowManager: WindowManager? = null
-    private var overlayView: View? = null
-    private var floatingBubble: View? = null
-    private var tts: TextToSpeech? = null
-    private var isOverlayOpen = false
-    
-    @JvmStatic
+    private var bubbleView: View? = null
+    private var activeDialog: BottomSheetDialog? = null
+    var isBusy = false
     var isPaused = false
+    private var ttsEngine: TextToSpeech? = null
+    private var hasAnsweredOnce = false
 
-    @JvmStatic
-    fun show(context: Context, isStuck: Boolean = false) {
-        showFloatingBubble(context)
-    }
-
-    @JvmStatic
-    fun forceHide() {
-        removeFloatingBubble()
-    }
-
-    @JvmStatic
-    fun showFloatingBubble(context: Context) {
-        if (floatingBubble != null) return
-        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        windowManager = wm
-
-        val bubble = ImageView(context).apply {
-            setImageResource(android.R.drawable.ic_menu_help)
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(10, 10, 10, 10)
+    fun show(context: Context, stuck: Boolean = false) {
+        if (!GuideSettings.isActive(context)) {
+            forceHide()
+            return
         }
 
-        val params = WindowManager.LayoutParams(
-            140, 140,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 30
-            y = 300
-        }
+        val appContext = context.applicationContext
+        hideBubbleOnly()
 
-        bubble.setOnClickListener {
-            toggleOverlay(context)
-        }
-
-        floatingBubble = bubble
         try {
-            wm.addView(bubble, params)
+            windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            if (GuideSettings.voiceEnabled(appContext)) {
+                initTTS(appContext)
+            }
+
+            val size = (56 * appContext.resources.displayMetrics.density).toInt()
+
+            val icon = Button(appContext).apply {
+                text = "G"
+                setTextColor(Color.parseColor("#121824"))
+                textSize = 22f
+                setTypeface(null, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, 0)
+                
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#F7B955"))
+                    setStroke(6, Color.parseColor("#FFFFFF"))
+                }
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    elevation = 16f
+                }
+            }
+
+            val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+
+            val params = WindowManager.LayoutParams(
+                size,
+                size,
+                layoutType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                x = 40
+                y = 400
+            }
+
+            icon.setOnTouchListener(object : View.OnTouchListener {
+                private var initialX = 0
+                private var initialY = 0
+                private var initialTouchX = 0f
+                private var initialTouchY = 0f
+
+                override fun onTouch(v: View, event: MotionEvent): Boolean {
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            initialX = params.x
+                            initialY = params.y
+                            initialTouchX = event.rawX
+                            initialTouchY = event.rawY
+                            return true
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            params.x = initialX - (event.rawX - initialTouchX).toInt()
+                            params.y = initialY + (event.rawY - initialTouchY).toInt()
+                            windowManager?.updateViewLayout(bubbleView, params)
+                            return true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            val diffX = Math.abs(event.rawX - initialTouchX)
+                            val diffY = Math.abs(event.rawY - initialTouchY)
+                            if (diffX < 15 && diffY < 15) {
+                                showGuideDialog(context)
+                            }
+                            return true
+                        }
+                    }
+                    return false
+                }
+            })
+
+            windowManager?.addView(icon, params)
+            bubbleView = icon
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        initTTS(context)
     }
 
-    @JvmStatic
-    fun removeFloatingBubble() {
-        floatingBubble?.let {
-            try {
-                windowManager?.removeView(it)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            floatingBubble = null
-        }
-        removeOverlay()
-        stopTTS()
-    }
+    private fun showGuideDialog(context: Context) {
+        activeDialog?.dismiss()
+        activeDialog = null
+        hasAnsweredOnce = false
 
-    private fun toggleOverlay(context: Context) {
-        if (isOverlayOpen) {
-            removeOverlay()
-        } else {
-            showOverlay(context)
-        }
-    }
+        val dialog = BottomSheetDialog(context)
+        activeDialog = dialog
 
-    private fun showOverlay(context: Context) {
-        if (overlayView != null) return
-        val wm = windowManager ?: context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-
-        val view = FrameLayout(context)
-
-        val card = LinearLayout(context).apply {
+        val mainLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#121926"))
-            setPadding(32, 24, 32, 24)
+            setPadding(32, 24, 32, 28)
+            setBackgroundColor(Color.parseColor("#121824"))
         }
 
-        val header = RelativeLayout(context).apply {
-            val title = TextView(context).apply {
-                text = "Guide AI"
-                setTextColor(Color.parseColor("#FFB703"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-            }
-            val offBtn = Button(context).apply {
-                text = "OFF"
-                setBackgroundColor(Color.parseColor("#E63946"))
-                setTextColor(Color.WHITE)
-                setOnClickListener {
-                    GuideAccessibilityService.stopService(context)
-                    removeFloatingBubble()
-                }
-            }
-            val offParams = RelativeLayout.LayoutParams(160, 90).apply {
-                addRule(RelativeLayout.ALIGN_PARENT_END)
-            }
-            addView(title)
-            addView(offBtn, offParams)
+        val titleRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
-        val scrollView = ScrollView(context).apply {
+        val title = TextView(context).apply {
+            text = "Guide AI"
+            setTextColor(Color.parseColor("#F7B955"))
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val offButton = Button(context).apply {
+            text = "OFF"
+            textSize = 10f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#D32F2F"))
+            layoutParams = LinearLayout.LayoutParams(
+                (60 * context.resources.displayMetrics.density).toInt(),
+                (32 * context.resources.displayMetrics.density).toInt()
+            )
+            setOnClickListener {
+                hideKeyboard(context, this)
+                dialog.dismiss()
+                activeDialog = null
+                GuideSettings.setActive(context, false)
+                forceHide()
+            }
+        }
+
+        titleRow.addView(title)
+        titleRow.addView(offButton)
+        mainLayout.addView(titleRow)
+
+        // Height kam ki gayi hai (120dp max)
+        val scrollContainer = ScrollView(context).apply {
+            val maxHeight = (120 * context.resources.displayMetrics.density).toInt()
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 120f, context.resources.displayMetrics).toInt()
-            )
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                height = maxHeight
+            }
             isVerticalScrollBarEnabled = true
         }
 
-        val responseText = TextView(context).apply {
+        val guidance = TextView(context).apply {
             text = "Hello! How can I help you today?"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setPadding(0, 16, 0, 16)
+            textSize = 13f
+            setPadding(0, 12, 0, 12)
         }
-        scrollView.addView(responseText)
+        scrollContainer.addView(guidance)
+        mainLayout.addView(scrollContainer)
 
-        val input = EditText(context).apply {
+        val userQuestionContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 12, 16, 12)
+            setBackgroundColor(Color.parseColor("#1E2A38"))
+            visibility = View.GONE
+        }
+        
+        val userQuestionHeader = TextView(context).apply {
+            text = "YOUR QUESTION:"
+            setTextColor(Color.parseColor("#00E5FF"))
+            textSize = 10f
+            setTypeface(null, Typeface.BOLD)
+        }
+        
+        val userQuestionText = TextView(context).apply {
+            setTextColor(Color.parseColor("#E0F7FA"))
+            textSize = 12f
+            setTypeface(null, Typeface.BOLD_ITALIC)
+        }
+        
+        userQuestionContainer.addView(userQuestionHeader)
+        userQuestionContainer.addView(userQuestionText)
+        mainLayout.addView(userQuestionContainer)
+
+        val questionInput = EditText(context).apply {
             hint = "Ask a question..."
-            setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#1E293B"))
-            setPadding(20, 16, 20, 16)
+            setHintTextColor(Color.parseColor("#8A99AD"))
+            textSize = 13f
+            setPadding(20, 20, 20, 20)
+            setBackgroundColor(Color.parseColor("#263344"))
         }
+        mainLayout.addView(questionInput)
 
-        val btnContainer = LinearLayout(context).apply {
+        val btnRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 16, 0, 0)
         }
-        val actionBtn = Button(context).apply {
+
+        val askBtn = Button(context).apply {
             text = "ASK ABOUT SCREEN"
-            setBackgroundColor(Color.parseColor("#FFB703"))
-            setTextColor(Color.BLACK)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val closeBtn = Button(context).apply {
-            text = "CLOSE"
-            setBackgroundColor(Color.parseColor("#334155"))
-            setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        btnContainer.addView(actionBtn)
-        btnContainer.addView(closeBtn)
-
-        card.addView(header)
-        card.addView(scrollView)
-        card.addView(input)
-        card.addView(btnContainer)
-
-        view.addView(card)
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.BOTTOM
-        }
-
-        view.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_OUTSIDE) {
-                removeOverlay()
-                true
-            } else false
-        }
-
-        closeBtn.setOnClickListener {
-            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            if (imm.isAcceptingText) {
-                imm.hideSoftInputFromWindow(input.windowToken, 0)
-            } else {
-                removeOverlay()
+            textSize = 11f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#121824"))
+            setBackgroundColor(Color.parseColor("#F7B955"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = 8
             }
         }
 
-        input.addTextChangedListener(object : TextWatcher {
+        questionInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                actionBtn.text = if (s.isNullOrEmpty()) "ASK ABOUT SCREEN" else "ASK AGAIN"
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (!isBusy) {
+                    val input = s?.toString()?.trim() ?: ""
+                    if (hasAnsweredOnce) {
+                        askBtn.text = "ASK AGAIN"
+                    } else if (input.isNotEmpty()) {
+                        askBtn.text = "ASK ANYTHING"
+                    } else {
+                        askBtn.text = "ASK ABOUT SCREEN"
+                    }
+                }
             }
-            override fun afterTextChanged(s: Editable?) {}
         })
 
-        actionBtn.setOnClickListener {
-            val query = input.text.toString().trim()
-            responseText.text = "Thinking..."
-            
-            CoroutineScope(Dispatchers.IO).launch {
-                val imageBase64 = ScreenCapture.capture(context) ?: ""
-                val result = GuideApi.explainVision(query, imageBase64)
+        askBtn.setOnClickListener {
+            val inputQuery = questionInput.text.toString().trim()
+            hideKeyboard(context, questionInput)
 
-                withContext(Dispatchers.Main) {
-                    result.onSuccess { rawText ->
-                        val formattedHtml = formatResponseText(rawText)
-                        responseText.text = Html.fromHtml(formattedHtml, Html.FROM_HTML_MODE_LEGACY)
-                        speakCleanText(cleanForSpeech(rawText))
-                    }.onFailure { err ->
-                        responseText.text = "Error: ${err.message}"
+            if (inputQuery.isNotEmpty()) {
+                userQuestionText.text = inputQuery
+                userQuestionContainer.visibility = View.VISIBLE
+            }
+
+            askBtn.text = "THINKING..."
+            askBtn.isEnabled = false
+            isBusy = true
+
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val imageStr = ScreenCapture.capture(context)
+                    if (!imageStr.isNullOrEmpty()) {
+                        GuideApi.explainVision(inputQuery, imageStr)
+                            .onSuccess { answer ->
+                                val formattedAnswer = formatAIResponse(answer)
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    guidance.text = formattedAnswer
+                                    if (GuideSettings.voiceEnabled(context)) {
+                                        speakText(formattedAnswer)
+                                    }
+                                    hasAnsweredOnce = true
+                                    askBtn.text = "ASK AGAIN"
+                                    askBtn.isEnabled = true
+                                    isBusy = false
+                                    hideKeyboard(context, questionInput)
+                                }
+                            }
+                            .onFailure { exception ->
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    guidance.text = "ERROR: ${exception.message}"
+                                    askBtn.text = "ASK AGAIN"
+                                    askBtn.isEnabled = true
+                                    isBusy = false
+                                }
+                            }
+                    } else {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            guidance.text = "ERROR: Screen capture frame empty"
+                            askBtn.text = "ASK AGAIN"
+                            askBtn.isEnabled = true
+                            isBusy = false
+                        }
+                    }
+                } catch (e: Exception) {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        guidance.text = "ERROR: ${e.localizedMessage}"
+                        askBtn.text = "ASK AGAIN"
+                        askBtn.isEnabled = true
+                        isBusy = false
                     }
                 }
             }
         }
 
-        overlayView = view
-        isOverlayOpen = true
-        try {
-            wm.addView(view, params)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        val closeBtn = Button(context).apply {
+            text = "CANCEL"
+            textSize = 11f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#37474F"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                if (imm.isAcceptingText) {
+                    // Jab Cancel par tap ho aur keyboard open ho, sirf keyboard band hoga
+                    hideKeyboard(context, questionInput)
+                } else {
+                    // Agar keyboard pehle se band hai, tab overlay dialog band hoga
+                    dialog.dismiss()
+                    activeDialog = null
+                }
+            }
         }
+
+        btnRow.addView(askBtn)
+        btnRow.addView(closeBtn)
+        mainLayout.addView(btnRow)
+
+        dialog.setContentView(mainLayout)
+        val dialogType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        
+        dialog.window?.let { window ->
+            window.setType(dialogType)
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+            )
+            
+            // Touch outside handler
+            window.decorView.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_OUTSIDE) {
+                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    if (imm.isAcceptingText) {
+                        // Jab keyboard open rahe tab screen par kahin tap hone par keyboard + overlay dono hatein
+                        hideKeyboard(context, questionInput)
+                        dialog.dismiss()
+                        activeDialog = null
+                    }
+                }
+                false
+            }
+        }
+        
+        // Jab keyboard off ho, screen par tap hone par overlay na hate aur screen kaam kare
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.setCancelable(false)
+
+        dialog.setOnDismissListener {
+            if (activeDialog == dialog) {
+                activeDialog = null
+            }
+        }
+
+        dialog.show()
     }
 
-    private fun removeOverlay() {
-        overlayView?.let {
+    private fun hideKeyboard(context: Context, view: View) {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(view.windowToken, 0)
+    }
+
+    private fun initTTS(context: Context) {
+        if (ttsEngine != null) return
+        ttsEngine = TextToSpeech(context, { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val locale = Locale("en", "IN")
+                ttsEngine?.language = locale
+                ttsEngine?.setSpeechRate(0.92f)
+                ttsEngine?.setPitch(1.0f)
+            }
+        }, "com.google.android.tts")
+    }
+
+    private fun speakText(text: String) {
+        val cleanSpeech = text.replace(Regex("[\\*\\#\\[\\]\\(\\)]"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        val params = Bundle()
+        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+        ttsEngine?.speak(cleanSpeech, TextToSpeech.QUEUE_FLUSH, params, "GUIDE_AI_TTS")
+    }
+
+    private fun formatAIResponse(rawText: String): String {
+        var text = rawText.trim()
+        
+        // Bracket aur bakwas formatting clean karein
+        text = text.replace(Regex("###\\s*\\d+\\.\\s*"), "")
+            .replace(Regex("###\\s*"), "")
+            .replace(Regex("---|___|\\*\\*\\*"), "")
+            .replace(Regex("••+"), "•")
+            .replace(Regex("··+"), "•")
+            .replace(Regex("\\*\\s*\"?"), "• ")
+            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
+            .replace(Regex("[()]"), "") // Faltu brackets ko hatane ke liye
+            .replace(Regex("(?i)Foreground Overlay.*?\n\n"), "")
+            .replace(Regex("(?i)This screenshot shows.*?\n\n"), "")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+            
+        return if (text.isEmpty()) rawText.trim() else text
+    }
+
+    private fun hideBubbleOnly() {
+        bubbleView?.let {
             try {
                 windowManager?.removeView(it)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            overlayView = null
-            isOverlayOpen = false
         }
+        bubbleView = null
     }
 
-    private fun formatResponseText(text: String): String {
-        var processed = text
-        val regex = Regex("\\b([A-Z][a-zA-Z0-9]*|Assam|Kaveri|Priestley)\\b")
-        processed = regex.replace(processed) { match ->
-            "<font color='#FFD700'><b>(${match.value})</b></font>"
-        }
-        return processed.replace("\n", "<br/>")
+    fun hide() {
+        if (isBusy) return
+        activeDialog?.dismiss()
+        activeDialog = null
+        hideBubbleOnly()
     }
 
-    private fun cleanForSpeech(text: String): String {
-        val words = text.split(" ")
-        val cleaned = mutableListOf<String>()
-        for (i in words.indices) {
-            if (i == 0 || !words[i].equals(words[i - 1], ignoreCase = true)) {
-                cleaned.add(words[i])
-            }
-        }
-        return cleaned.joinToString(" ")
-            .replace("•", "")
-            .replace("*", "")
-            .replace("(", "")
-            .replace(")", "")
-    }
-
-    private fun initTTS(context: Context) {
-        tts = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale("hi", "IN")
-            }
-        }
-    }
-
-    private fun speakCleanText(text: String) {
-        tts?.stop()
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "GuideTTS")
-    }
-
-    private fun stopTTS() {
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
+    fun forceHide() {
+        isBusy = false
+        isPaused = false
+        ttsEngine?.stop()
+        ttsEngine?.shutdown()
+        ttsEngine = null
+        activeDialog?.dismiss()
+        activeDialog = null
+        hideBubbleOnly()
+        windowManager = null
     }
 }
