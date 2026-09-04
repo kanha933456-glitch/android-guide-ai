@@ -1,10 +1,13 @@
 package com.guideai.app
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
+import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 class GuideAccessibilityService : AccessibilityService() {
+
     private var lastPackage = ""
     private var lastShownAt = 0L
     private var samePackageCount = 0
@@ -15,23 +18,24 @@ class GuideAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        // Service connect hote hi overlay dikhao
+        // Service connect hote hi overlay dikhao agar active hai
         if (GuideSettings.isActive(this)) {
-            GuideOverlay.show(this)
+            GuideOverlay.showFloatingBubble(this)
         }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!GuideSettings.isActive(this)) {
-            GuideOverlay.forceHide()
+            GuideOverlay.removeFloatingBubble()
             return
         }
 
         val root = rootInActiveWindow
         val pkg = root?.packageName?.toString() ?: event?.packageName?.toString() ?: return
 
+        // Sensitive/System Settings screens par auto-hide karo
         if (pkg in protectedPackages) {
-            GuideOverlay.forceHide()
+            GuideOverlay.removeFloatingBubble()
             return
         }
 
@@ -49,10 +53,10 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val stuck = samePackageCount >= 5
 
-        // Force show button on any screen event
+        // Screen event hone par floating icon ko active rakho
         if (now - lastShownAt > 1500) {
             lastShownAt = now
-            GuideOverlay.show(this, stuck)
+            GuideOverlay.showFloatingBubble(this)
         }
     }
 
@@ -67,6 +71,16 @@ class GuideAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        GuideOverlay.forceHide()
+        // Service band hote hi overlay aur bubble ko complete cleanup karo
+        GuideOverlay.removeFloatingBubble()
+    }
+
+    companion object {
+        // App settings ya overlay OFF button se service stop karne ke liye trigger
+        fun stopService(context: Context) {
+            GuideSettings.setActive(context, false)
+            val intent = Intent(context, GuideAccessibilityService::class.java)
+            context.stopService(intent)
+        }
     }
 }
