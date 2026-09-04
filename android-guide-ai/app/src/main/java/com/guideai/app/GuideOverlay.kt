@@ -473,3 +473,171 @@ object GuideOverlay {
         windowManager = null
     }
 }
+
+val locale = if (segment.isDevanagari) Locale("hi", "IN") else Locale("en", "IN")
+            ttsEngine?.language = locale
+
+            val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            ttsEngine?.speak(trimmed, queueMode, params, "GUIDE_AI_TTS_$index")
+        }
+    }
+
+    private data class TextSegment(val text: String, val isDevanagari: Boolean)
+
+    /**
+     * Groups [text] into alternating chunks of Devanagari script and everything else
+     * (Latin letters, digits, punctuation, symbols), so each chunk can be spoken with the
+     * correct TTS locale.
+     */
+    private fun splitByScript(text: String): List<TextSegment> {
+        val segments = mutableListOf<TextSegment>()
+        if (text.isEmpty()) return segments
+
+        fun isDevanagariChar(c: Char) = c in '\u0900'..'\u097F'
+        fun isLatinLetter(c: Char) = c.isLetter() && !isDevanagariChar(c)
+
+        val sb = StringBuilder()
+        var currentIsDevanagari: Boolean? = null
+
+        for (c in text) {
+            val charIsDev = isDevanagariChar(c)
+            val charIsLatinLetter = isLatinLetter(c)
+
+            // Neutral characters (spaces, digits, punctuation) stay attached to whichever
+            // segment is currently being built.
+            if (!charIsDev && !charIsLatinLetter) {
+                sb.append(c)
+                continue
+            }
+
+            when {
+                currentIsDevanagari == null -> {
+                    currentIsDevanagari = charIsDev
+                    sb.append(c)
+                }
+                currentIsDevanagari == charIsDev -> {
+                    sb.append(c)
+                }
+                else -> {
+                    segments.add(TextSegment(sb.toString(), currentIsDevanagari!!))
+                    sb.clear()
+                    sb.append(c)
+                    currentIsDevanagari = charIsDev
+                }
+            }
+        }
+
+        if (sb.isNotEmpty()) {
+            segments.add(TextSegment(sb.toString(), currentIsDevanagari ?: false))
+        }
+
+        return segments
+    }
+
+    /**
+     * Wraps the raw user query with an instruction telling the model to reply strictly in the
+     * same language/script the question was asked in, and to keep the ( ) important-word
+     * highlighting convention (without wrapping the single final correct answer).
+     *
+     * Note: this only shapes the prompt sent from this file. For fully reliable language
+     * matching you may also want to align GuideApi.kt's system prompt with the same rule.
+     */
+    private fun buildLanguageAwarePrompt(userQuery: String): String {
+        return "$userQuery\n\n" +
+            "[System instruction: Reply strictly in the exact same language and script the " +
+            "user used in the question above. If the question is Hindi written in Devanagari " +
+            "script, reply fully in Devanagari Hindi. If the question is Hinglish (Hindi words " +
+            "typed in Roman/English letters), reply fully in Hinglish using Roman letters only " +
+            "— do not switch to Devanagari. If the question is in English, reply fully in " +
+            "English. Never mix multiple languages or scripts within a single response. " +
+            "Wrap important key words or terms in parentheses like (word), but do not wrap the " +
+            "single final correct answer in parentheses.]"
+    }
+
+    /**
+     * Turns raw AI text into a styled Spannable:
+     *  - Every message starts with a gold ➤ arrow.
+     *  - Any (word or phrase) segment is highlighted in a premium gold colour and bolded.
+     */
+    private fun buildFormattedSpannable(rawText: String): SpannableString {
+        val fullText = ARROW_PREFIX + rawText
+        val spannable = SpannableString(fullText)
+
+        spannable.setSpan(
+            ForegroundColorSpan(Color.parseColor(ARROW_COLOR)),
+            0,
+            ARROW_PREFIX.length,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+
+        val highlightColor = Color.parseColor(HIGHLIGHT_COLOR)
+        val pattern = Regex("\\(([^()]+)\\)")
+        for (match in pattern.findAll(fullText)) {
+            val start = match.range.first
+            val end = match.range.last + 1
+            spannable.setSpan(
+                ForegroundColorSpan(highlightColor),
+                start, end,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            spannable.setSpan(
+                StyleSpan(Typeface.BOLD),
+                start, end,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+
+        return spannable
+    }
+
+    private fun formatAIResponse(rawText: String): String {
+        var text = rawText.trim()
+
+        // Remove markdown artifacts, double bullets, divider lines, and any leaked
+        // system-instruction text that the model might echo back.
+        text = text.replace(Regex("###\\s*\\d+\\.\\s*"), "")
+            .replace(Regex("###\\s*"), "")
+            .replace(Regex("---|___|\\*\\*\\*"), "")
+            .replace(Regex("••+"), "•")
+            .replace(Regex("··+"), "•")
+            .replace(Regex("\\*\\s*\"?"), "• ")
+            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
+            .replace(Regex("(?i)Foreground Overlay.*?\n\n"), "")
+            .replace(Regex("(?i)This screenshot shows.*?\n\n"), "")
+            .replace(Regex("(?is)\\[System instruction.*?\\]"), "")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+
+        return if (text.isEmpty()) rawText.trim() else text
+    }
+
+    private fun hideBubbleOnly() {
+        bubbleView?.let {
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        bubbleView = null
+    }
+
+    fun hide() {
+        if (isBusy) return
+        activeDialog?.dismiss()
+        activeDialog = null
+        hideBubbleOnly()
+    }
+
+    fun forceHide() {
+        isBusy = false
+        isPaused = false
+        ttsEngine?.stop()
+        ttsEngine?.shutdown()
+        ttsEngine = null
+        activeDialog?.dismiss()
+        activeDialog = null
+        hideBubbleOnly()
+        windowManager = null
+    }
+}
