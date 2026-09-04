@@ -1,12 +1,9 @@
 package com.guideai.app
 
-import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.text.Editable
 import android.text.Html
@@ -25,15 +22,28 @@ object GuideOverlay {
     private var floatingBubble: View? = null
     private var tts: TextToSpeech? = null
     private var isOverlayOpen = false
-    private val scope = CoroutineScope(Dispatchers.Main + Job())
+    
+    @JvmStatic
+    var isPaused = false
 
+    @JvmStatic
+    fun show(context: Context, isStuck: Boolean = false) {
+        showFloatingBubble(context)
+    }
+
+    @JvmStatic
+    fun forceHide() {
+        removeFloatingBubble()
+    }
+
+    @JvmStatic
     fun showFloatingBubble(context: Context) {
         if (floatingBubble != null) return
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         windowManager = wm
 
         val bubble = ImageView(context).apply {
-            setImageResource(R.mipmap.ic_launcher) // Guide AI icon
+            setImageResource(android.R.drawable.ic_menu_help)
             setBackgroundColor(Color.TRANSPARENT)
             setPadding(10, 10, 10, 10)
         }
@@ -42,7 +52,7 @@ object GuideOverlay {
             140, 140,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLATION_MODIFIED
+            PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.END
             x = 30
@@ -54,13 +64,22 @@ object GuideOverlay {
         }
 
         floatingBubble = bubble
-        wm.addView(bubble, params)
+        try {
+            wm.addView(bubble, params)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         initTTS(context)
     }
 
+    @JvmStatic
     fun removeFloatingBubble() {
         floatingBubble?.let {
-            windowManager?.removeView(it)
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             floatingBubble = null
         }
         removeOverlay()
@@ -79,30 +98,25 @@ object GuideOverlay {
         if (overlayView != null) return
         val wm = windowManager ?: context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-        val inflater = LayoutInflater.from(context)
         val view = FrameLayout(context)
 
-        // Strict Fixed Height Layout with Scrollable Output Container
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#121926"))
             setPadding(32, 24, 32, 24)
         }
 
-        // Header Section
         val header = RelativeLayout(context).apply {
             val title = TextView(context).apply {
                 text = "Guide AI"
                 setTextColor(Color.parseColor("#FFB703"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                id = View.generateViewId()
             }
             val offBtn = Button(context).apply {
                 text = "OFF"
                 setBackgroundColor(Color.parseColor("#E63946"))
                 setTextColor(Color.WHITE)
                 setOnClickListener {
-                    // Turn OFF Master Switch
                     GuideAccessibilityService.stopService(context)
                     removeFloatingBubble()
                 }
@@ -114,7 +128,6 @@ object GuideOverlay {
             addView(offBtn, offParams)
         }
 
-        // Fixed Height Output Response Area (Scrollable)
         val scrollView = ScrollView(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -131,7 +144,6 @@ object GuideOverlay {
         }
         scrollView.addView(responseText)
 
-        // Input Question Box
         val input = EditText(context).apply {
             hint = "Ask a question..."
             setHintTextColor(Color.GRAY)
@@ -140,7 +152,6 @@ object GuideOverlay {
             setPadding(20, 16, 20, 16)
         }
 
-        // Action Buttons
         val btnContainer = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 16, 0, 0)
@@ -168,7 +179,6 @@ object GuideOverlay {
 
         view.addView(card)
 
-        // Window Layout Parameters allowing Touch Pass-Through
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -179,7 +189,6 @@ object GuideOverlay {
             gravity = Gravity.BOTTOM
         }
 
-        // Touch Listener for Dismiss On Outside Touch
         view.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_OUTSIDE) {
                 removeOverlay()
@@ -187,7 +196,6 @@ object GuideOverlay {
             } else false
         }
 
-        // CLOSE button logic: Hide Keyboard if open, otherwise hide Overlay
         closeBtn.setOnClickListener {
             val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             if (imm.isAcceptingText) {
@@ -200,7 +208,7 @@ object GuideOverlay {
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                actionBtn.text = if (s.isNull_or_Blank()) "ASK ABOUT SCREEN" else "ASK AGAIN"
+                actionBtn.text = if (s.isNullOrEmpty()) "ASK ABOUT SCREEN" else "ASK AGAIN"
             }
             override fun afterTextChanged(s: Editable?) {}
         })
@@ -209,7 +217,7 @@ object GuideOverlay {
             val query = input.text.toString().trim()
             responseText.text = "Thinking..."
             
-            scope.launch(Dispatchers.IO) {
+            CoroutineScope(Dispatchers.IO).launch {
                 val imageBase64 = ScreenCapture.capture(context) ?: ""
                 val result = GuideApi.explainVision(query, imageBase64)
 
@@ -227,20 +235,25 @@ object GuideOverlay {
 
         overlayView = view
         isOverlayOpen = true
-        wm.addView(view, params)
+        try {
+            wm.addView(view, params)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun removeOverlay() {
         overlayView?.let {
-            windowManager?.removeView(it)
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             overlayView = null
             isOverlayOpen = false
         }
     }
 
-    private fun CharSequence?.isNull_or_Blank(): Boolean = this == null || this.isBlank()
-
-    // Formatting: Highlight Important Words in Gold and Parentheses
     private fun formatResponseText(text: String): String {
         var processed = text
         val regex = Regex("\\b([A-Z][a-zA-Z0-9]*|Assam|Kaveri|Priestley)\\b")
@@ -250,7 +263,6 @@ object GuideOverlay {
         return processed.replace("\n", "<br/>")
     }
 
-    // Voice Engine Duplicate Text Cleanup Fix
     private fun cleanForSpeech(text: String): String {
         val words = text.split(" ")
         val cleaned = mutableListOf<String>()
