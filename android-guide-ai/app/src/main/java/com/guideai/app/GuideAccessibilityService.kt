@@ -18,24 +18,22 @@ class GuideAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        // Service connect hote hi overlay dikhao agar active hai
         if (GuideSettings.isActive(this)) {
-            GuideOverlay.showFloatingBubble(this)
+            GuideOverlay.show(this)
         }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!GuideSettings.isActive(this)) {
-            GuideOverlay.removeFloatingBubble()
+            GuideOverlay.forceHide()
             return
         }
 
         val root = rootInActiveWindow
         val pkg = root?.packageName?.toString() ?: event?.packageName?.toString() ?: return
 
-        // Sensitive/System Settings screens par auto-hide karo
         if (pkg in protectedPackages) {
-            GuideOverlay.removeFloatingBubble()
+            GuideOverlay.forceHide()
             return
         }
 
@@ -53,10 +51,9 @@ class GuideAccessibilityService : AccessibilityService() {
 
         val stuck = samePackageCount >= 5
 
-        // Screen event hone par floating icon ko active rakho
         if (now - lastShownAt > 1500) {
             lastShownAt = now
-            GuideOverlay.showFloatingBubble(this)
+            GuideOverlay.show(this, stuck)
         }
     }
 
@@ -71,12 +68,10 @@ class GuideAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Service band hote hi overlay aur bubble ko complete cleanup karo
-        GuideOverlay.removeFloatingBubble()
+        GuideOverlay.forceHide()
     }
 
     companion object {
-        // App settings ya overlay OFF button se service stop karne ke liye trigger
         fun stopService(context: Context) {
             GuideSettings.setActive(context, false)
             val intent = Intent(context, GuideAccessibilityService::class.java)
