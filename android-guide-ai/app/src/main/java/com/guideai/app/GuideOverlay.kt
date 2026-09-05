@@ -9,7 +9,11 @@ import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.text.Editable
+import android.text.Spannable
+import android.text.SpannableString
 import android.text.TextWatcher
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -35,6 +39,11 @@ object GuideOverlay {
     private var ttsEngine: TextToSpeech? = null
     private var hasAnsweredOnce = false
 
+    // ---- Style constants ----
+    private const val ARROW_PREFIX = "➤ "
+    private const val ARROW_COLOR = "#F7B955"
+    private const val HIGHLIGHT_COLOR = "#FFD54F" // premium gold for ( ) important words
+
     fun show(context: Context, stuck: Boolean = false) {
         if (!GuideSettings.isActive(context)) {
             forceHide()
@@ -59,13 +68,13 @@ object GuideOverlay {
                 setTypeface(null, Typeface.BOLD)
                 gravity = Gravity.CENTER
                 setPadding(0, 0, 0, 0)
-                
+
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(Color.parseColor("#F7B955"))
                     setStroke(6, Color.parseColor("#FFFFFF"))
                 }
-                
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     elevation = 16f
                 }
@@ -137,12 +146,16 @@ object GuideOverlay {
         activeDialog = null
         hasAnsweredOnce = false
 
+        // Tracks whether the soft keyboard is currently visible for THIS dialog session.
+        // Drives the tap-outside / Cancel-button close behaviour described by the user.
+        var isKeyboardShowing = false
+
         val dialog = BottomSheetDialog(context)
         activeDialog = dialog
 
         val mainLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 24, 32, 28)
+            setPadding(40, 32, 40, 40)
             setBackgroundColor(Color.parseColor("#121824"))
         }
 
@@ -154,7 +167,7 @@ object GuideOverlay {
         val title = TextView(context).apply {
             text = "Guide AI"
             setTextColor(Color.parseColor("#F7B955"))
-            textSize = 16f
+            textSize = 17f
             setTypeface(null, Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -165,11 +178,12 @@ object GuideOverlay {
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#D32F2F"))
             layoutParams = LinearLayout.LayoutParams(
-                (60 * context.resources.displayMetrics.density).toInt(),
-                (32 * context.resources.displayMetrics.density).toInt()
+                (65 * context.resources.displayMetrics.density).toInt(),
+                (36 * context.resources.displayMetrics.density).toInt()
             )
             setOnClickListener {
                 hideKeyboard(context, this)
+                isKeyboardShowing = false
                 dialog.dismiss()
                 activeDialog = null
                 GuideSettings.setActive(context, false)
@@ -181,9 +195,9 @@ object GuideOverlay {
         titleRow.addView(offButton)
         mainLayout.addView(titleRow)
 
-        // Height kam ki gayi hai (120dp max)
+        // Response Container ko Scrollable banaya hai max height limit ke sath
         val scrollContainer = ScrollView(context).apply {
-            val maxHeight = (120 * context.resources.displayMetrics.density).toInt()
+            val maxHeight = (220 * context.resources.displayMetrics.density).toInt()
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -194,34 +208,34 @@ object GuideOverlay {
         }
 
         val guidance = TextView(context).apply {
-            text = "Hello! How can I help you today?"
+            text = buildFormattedSpannable("Hello! How can I help you today?")
             setTextColor(Color.WHITE)
-            textSize = 13f
-            setPadding(0, 12, 0, 12)
+            textSize = 14f
+            setPadding(0, 16, 0, 16)
         }
         scrollContainer.addView(guidance)
         mainLayout.addView(scrollContainer)
 
         val userQuestionContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16, 12, 16, 12)
+            setPadding(20, 16, 20, 16)
             setBackgroundColor(Color.parseColor("#1E2A38"))
             visibility = View.GONE
         }
-        
+
         val userQuestionHeader = TextView(context).apply {
             text = "YOUR QUESTION:"
             setTextColor(Color.parseColor("#00E5FF"))
-            textSize = 10f
+            textSize = 11f
             setTypeface(null, Typeface.BOLD)
         }
-        
+
         val userQuestionText = TextView(context).apply {
             setTextColor(Color.parseColor("#E0F7FA"))
-            textSize = 12f
+            textSize = 13f
             setTypeface(null, Typeface.BOLD_ITALIC)
         }
-        
+
         userQuestionContainer.addView(userQuestionHeader)
         userQuestionContainer.addView(userQuestionText)
         mainLayout.addView(userQuestionContainer)
@@ -230,25 +244,34 @@ object GuideOverlay {
             hint = "Ask a question..."
             setTextColor(Color.WHITE)
             setHintTextColor(Color.parseColor("#8A99AD"))
-            textSize = 13f
-            setPadding(20, 20, 20, 20)
+            textSize = 14f
+            setPadding(24, 24, 24, 24)
             setBackgroundColor(Color.parseColor("#263344"))
         }
+
+        // Keyboard opens whenever the input gets focus (this is how the user reaches
+        // the "overlay + keyboard both open" state shown in Image 1).
+        questionInput.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                isKeyboardShowing = true
+            }
+        }
+
         mainLayout.addView(questionInput)
 
         val btnRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 16, 0, 0)
+            setPadding(0, 24, 0, 0)
         }
 
         val askBtn = Button(context).apply {
             text = "ASK ABOUT SCREEN"
-            textSize = 11f
+            textSize = 12f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#121824"))
             setBackgroundColor(Color.parseColor("#F7B955"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = 8
+                marginEnd = 12
             }
         }
 
@@ -258,6 +281,7 @@ object GuideOverlay {
             override fun afterTextChanged(s: Editable?) {
                 if (!isBusy) {
                     val input = s?.toString()?.trim() ?: ""
+                    // Dynamic state sync
                     if (hasAnsweredOnce) {
                         askBtn.text = "ASK AGAIN"
                     } else if (input.isNotEmpty()) {
@@ -272,9 +296,10 @@ object GuideOverlay {
         askBtn.setOnClickListener {
             val inputQuery = questionInput.text.toString().trim()
             hideKeyboard(context, questionInput)
+            isKeyboardShowing = false
 
             if (inputQuery.isNotEmpty()) {
-                userQuestionText.text = inputQuery
+                userQuestionText.text = "\"$inputQuery\""
                 userQuestionContainer.visibility = View.VISIBLE
             }
 
@@ -286,11 +311,12 @@ object GuideOverlay {
                 try {
                     val imageStr = ScreenCapture.capture(context)
                     if (!imageStr.isNullOrEmpty()) {
-                        GuideApi.explainVision(inputQuery, imageStr)
+                        val promptToSend = buildLanguageAwarePrompt(inputQuery)
+                        GuideApi.explainVision(promptToSend, imageStr)
                             .onSuccess { answer ->
                                 val formattedAnswer = formatAIResponse(answer)
                                 CoroutineScope(Dispatchers.Main).launch {
-                                    guidance.text = formattedAnswer
+                                    guidance.text = buildFormattedSpannable(formattedAnswer)
                                     if (GuideSettings.voiceEnabled(context)) {
                                         speakText(formattedAnswer)
                                     }
@@ -299,11 +325,12 @@ object GuideOverlay {
                                     askBtn.isEnabled = true
                                     isBusy = false
                                     hideKeyboard(context, questionInput)
+                                    isKeyboardShowing = false
                                 }
                             }
                             .onFailure { exception ->
                                 CoroutineScope(Dispatchers.Main).launch {
-                                    guidance.text = "ERROR: ${exception.message}"
+                                    guidance.text = buildFormattedSpannable("ERROR: ${exception.message}")
                                     askBtn.text = "ASK AGAIN"
                                     askBtn.isEnabled = true
                                     isBusy = false
@@ -311,7 +338,7 @@ object GuideOverlay {
                             }
                     } else {
                         CoroutineScope(Dispatchers.Main).launch {
-                            guidance.text = "ERROR: Screen capture frame empty"
+                            guidance.text = buildFormattedSpannable("ERROR: Screen capture frame empty")
                             askBtn.text = "ASK AGAIN"
                             askBtn.isEnabled = true
                             isBusy = false
@@ -319,7 +346,7 @@ object GuideOverlay {
                     }
                 } catch (e: Exception) {
                     CoroutineScope(Dispatchers.Main).launch {
-                        guidance.text = "ERROR: ${e.localizedMessage}"
+                        guidance.text = buildFormattedSpannable("ERROR: ${e.localizedMessage}")
                         askBtn.text = "ASK AGAIN"
                         askBtn.isEnabled = true
                         isBusy = false
@@ -328,20 +355,24 @@ object GuideOverlay {
             }
         }
 
+        // Renamed to CANCEL to match the on-screen behaviour described by the user.
+        // Behaviour:
+        //  - Overlay + keyboard both open, 1st tap  -> hides ONLY the keyboard, overlay stays.
+        //  - Overlay + keyboard both open, 2nd tap  -> now keyboard already hidden, so this
+        //                                              tap closes the overlay too.
+        //  - Only overlay open (no keyboard)         -> single tap closes the overlay directly.
         val closeBtn = Button(context).apply {
             text = "CANCEL"
-            textSize = 11f
+            textSize = 12f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#37474F"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                if (imm.isAcceptingText) {
-                    // Jab Cancel par tap ho aur keyboard open ho, sirf keyboard band hoga
+                if (isKeyboardShowing) {
                     hideKeyboard(context, questionInput)
+                    isKeyboardShowing = false
                 } else {
-                    // Agar keyboard pehle se band hai, tab overlay dialog band hoga
                     dialog.dismiss()
                     activeDialog = null
                 }
@@ -359,32 +390,38 @@ object GuideOverlay {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-        
+
         dialog.window?.let { window ->
             window.setType(dialogType)
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            
+
+            // System flags for Background touch pass-through & Auto keyboard dismissal
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
             )
-            
-            // Touch outside handler
+
+            // Intercept touches outside the overlay:
+            //  - If the keyboard is open (overlay + keyboard both visible), a tap ANYWHERE
+            //    on the screen closes BOTH the keyboard and the overlay in one go.
+            //  - If only the overlay is open (no keyboard), a tap outside does NOTHING —
+            //    the overlay stays open and the touch passes through to the app underneath
+            //    (this already happens because we return false / FLAG_NOT_TOUCH_MODAL).
             window.decorView.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_OUTSIDE) {
-                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                    if (imm.isAcceptingText) {
-                        // Jab keyboard open rahe tab screen par kahin tap hone par keyboard + overlay dono hatein
+                    if (isKeyboardShowing) {
                         hideKeyboard(context, questionInput)
+                        isKeyboardShowing = false
                         dialog.dismiss()
                         activeDialog = null
                     }
+                    // else: only overlay open -> intentionally do nothing, let the tap
+                    // pass through to the underlying screen.
                 }
                 false
             }
         }
-        
-        // Jab keyboard off ho, screen par tap hone par overlay na hate aur screen kaam kare
+
         dialog.setCanceledOnTouchOutside(false)
         dialog.setCancelable(false)
 
@@ -414,67 +451,30 @@ object GuideOverlay {
         }, "com.google.android.tts")
     }
 
+    /**
+     * Speaks [text] by splitting it into Devanagari vs Latin-script segments and switching
+     * the TTS locale per segment. This fixes cases like an English letter "A" being read out
+     * as "अ" when the engine is stuck on the Hindi locale for the whole sentence — each
+     * segment now gets the locale that matches its actual script.
+     */
     private fun speakText(text: String) {
-        val cleanSpeech = text.replace(Regex("[\\*\\#\\[\\]\\(\\)]"), "")
+        val cleanSpeech = text.replace(Regex("[➤\\*\\#\\[\\]\\(\\)]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
+
+        if (cleanSpeech.isEmpty()) return
+
+        val segments = splitByScript(cleanSpeech)
+        if (segments.isEmpty()) return
+
         val params = Bundle()
         params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
-        ttsEngine?.speak(cleanSpeech, TextToSpeech.QUEUE_FLUSH, params, "GUIDE_AI_TTS")
-    }
 
-    private fun formatAIResponse(rawText: String): String {
-        var text = rawText.trim()
-        
-        // Bracket aur bakwas formatting clean karein
-        text = text.replace(Regex("###\\s*\\d+\\.\\s*"), "")
-            .replace(Regex("###\\s*"), "")
-            .replace(Regex("---|___|\\*\\*\\*"), "")
-            .replace(Regex("••+"), "•")
-            .replace(Regex("··+"), "•")
-            .replace(Regex("\\*\\s*\"?"), "• ")
-            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
-            .replace(Regex("[()]"), "") // Faltu brackets ko hatane ke liye
-            .replace(Regex("(?i)Foreground Overlay.*?\n\n"), "")
-            .replace(Regex("(?i)This screenshot shows.*?\n\n"), "")
-            .replace(Regex("\n{3,}"), "\n\n")
-            .trim()
-            
-        return if (text.isEmpty()) rawText.trim() else text
-    }
+        segments.forEachIndexed { index, segment ->
+            val trimmed = segment.text.trim()
+            if (trimmed.isEmpty()) return@forEachIndexed
 
-    private fun hideBubbleOnly() {
-        bubbleView?.let {
-            try {
-                windowManager?.removeView(it)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        bubbleView = null
-    }
-
-    fun hide() {
-        if (isBusy) return
-        activeDialog?.dismiss()
-        activeDialog = null
-        hideBubbleOnly()
-    }
-
-    fun forceHide() {
-        isBusy = false
-        isPaused = false
-        ttsEngine?.stop()
-        ttsEngine?.shutdown()
-        ttsEngine = null
-        activeDialog?.dismiss()
-        activeDialog = null
-        hideBubbleOnly()
-        windowManager = null
-    }
-}
-
-val locale = if (segment.isDevanagari) Locale("hi", "IN") else Locale("en", "IN")
+            val locale = if (segment.isDevanagari) Locale("hi", "IN") else Locale("en", "IN")
             ttsEngine?.language = locale
 
             val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
