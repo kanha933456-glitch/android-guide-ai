@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     const { text } = await generateText({
-      model: google('gemini-2.5-flash', { apiKey: process.env.GEMINI_API_KEY }),
+      model: google('gemini-3.5-flash-lite', { apiKey: process.env.GEMINI_API_KEY }),
       system: `You are Guide AI, an elite screen navigation assistant.
       
       CRITICAL INSTRUCTIONS:
