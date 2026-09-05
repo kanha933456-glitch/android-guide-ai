@@ -2,14 +2,23 @@ package com.guideai.app
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
 object GuideApi {
 
+    // Conversation history — app session me yaad rahega, band hone par reset
+    private val conversationHistory = mutableListOf<Pair<String, String>>() // role, content
+
+    fun clearHistory() {
+        conversationHistory.clear()
+    }
+
     suspend fun explainVision(question: String, image: String): Result<String> = withContext(Dispatchers.IO) {
-        val endpoint = BuildConfig.GUIDE_API_URL.replace("/api/guide", "/api/guide/vision")
+        // Naya /api/guide/chat endpoint use kar rahe hain
+        val endpoint = BuildConfig.GUIDE_API_URL.replace("/api/guide", "/api/guide/chat")
 
         if (endpoint.isBlank()) {
             return@withContext Result.failure(Exception("URL missing in BuildConfig"))
@@ -29,10 +38,20 @@ object GuideApi {
                 doOutput = true
             }
 
-            // systemInstruction hata diya — ab server ka improved prompt use hoga
+            // History array build karo
+            val historyArray = JSONArray()
+            for ((role, content) in conversationHistory) {
+                val turn = JSONObject().apply {
+                    put("role", role)
+                    put("content", content)
+                }
+                historyArray.put(turn)
+            }
+
             val jsonPayload = JSONObject().apply {
                 put("image", formattedImage)
                 put("question", question)
+                put("history", historyArray)
             }.toString()
 
             connection.outputStream.use { os ->
@@ -54,6 +73,17 @@ object GuideApi {
 
             if (resultText.isBlank()) {
                 error("Server returned empty guidance")
+            }
+
+            // History me current turn save karo
+            if (question.isNotBlank()) {
+                conversationHistory.add(Pair("user", question))
+            }
+            conversationHistory.add(Pair("assistant", resultText))
+
+            // History zyada badi na ho — last 10 turns hi rakho
+            while (conversationHistory.size > 10) {
+                conversationHistory.removeAt(0)
             }
 
             resultText
