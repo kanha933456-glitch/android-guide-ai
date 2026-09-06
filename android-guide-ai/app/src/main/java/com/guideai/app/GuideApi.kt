@@ -1,23 +1,17 @@
 package com.guideai.app
 
 import android.util.Base64
-import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.concurrent.TimeUnit
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
 object GuideApi {
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .build()
-
-    private val gson = Gson()
 
     private const val ENCODED_KEY = "QVEuQWI4Uk42SjVtby1qS3Zhb1hnaXpLRm9aTE0xbEtNVWJuWHZMRGN2d2ltUk42T1ZQSXc="
 
@@ -35,7 +29,6 @@ object GuideApi {
         }
     }
 
-    @Suppress("UNCHECKED_CAST")
     suspend fun explainVision(question: String, image: String): Result<String> = withContext(Dispatchers.IO) {
         try {
             val apiKey = getDecryptedKey()
@@ -43,7 +36,7 @@ object GuideApi {
                 return@withContext Result.failure(Exception("API Key missing or invalid"))
             }
 
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
+            val urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
 
             val promptText = if (question.isBlank()) {
                 "Analyze this screen and tell the user what to do in very brief, clear steps."
@@ -59,85 +52,86 @@ object GuideApi {
                 image
             }
 
-            val contentsList = mutableListOf<Map<String, Any>>()
+            val contentsArray = JSONArray()
 
-            // History add karna
+            // History
             for ((role, content) in conversationHistory) {
-                val roleName = if (role == "user") "user" else "model"
-                contentsList.add(
-                    mapOf(
-                        "role" to roleName,
-                        "parts" to listOf(mapOf("text" to content))
-                    )
-                )
+                val turnObj = JSONObject()
+                turnObj.put("role", if (role == "user") "user" else "model")
+                val partsArr = JSONArray()
+                partsArr.put(JSONObject().put("text", content))
+                turnObj.put("parts", partsArr)
+                contentsArray.put(turnObj)
             }
 
-            // Current turn request
-            val currentParts = mutableListOf<Map<String, Any>>()
-            currentParts.add(mapOf("text" to "$systemInstruction\n\nUser Question: $promptText"))
+            // Current prompt
+            val currentObj = JSONObject()
+            currentObj.put("role", "user")
+            val partsArr = JSONArray()
+            partsArr.put(JSONObject().put("text", "$systemInstruction\n\nUser Question: $promptText"))
 
             if (cleanImage.isNotBlank()) {
-                currentParts.add(
-                    mapOf(
-                        "inline_data" to mapOf(
-                            "mime_type" to "image/jpeg",
-                            "data" to cleanImage
-                        )
-                    )
-                )
+                val inlineData = JSONObject()
+                inlineData.put("mime_type", "image/jpeg")
+                inlineData.put("data", cleanImage)
+                partsArr.put(JSONObject().put("inline_data", inlineData))
             }
 
-            contentsList.add(
-                mapOf(
-                    "role" to "user",
-                    "parts" to currentParts
-                )
-            )
+            currentObj.put("parts", partsArr)
+                contentsArray.put(currentObj)
 
-            val payloadMap = mapOf("contents" to contentsList)
-            val jsonPayload = gson.toJson(payloadMap)
+            val payload = JSONObject()
+            payload.put("contents", contentsArray)
 
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            val body = jsonPayload.toRequestBody(mediaType)
+            // Pure Java HttpURLConnection (Zero OkHttp dependency)
+            val url = URL(urlString)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            connection.connectTimeout = 15000
+            connection.readTimeout = 20000
+            connection.doOutput = true
 
-            val request = Request.Builder()
-                .url(url)
-                .post(body)
-                .build()
+            val writer = OutputStreamWriter(connection.outputStream)
+            writer.write(payload.toString())
+            writer.flush()
+            writer.close()
 
-            val response = client.newCall(request).execute()
-            val responseBody = response.body?.string()
+            val responseCode = connection.responseCode
 
-            if (response.isSuccessful && responseBody != null) {
-                // Pure Map Parsing (No Gson JsonObject method errors)
-                val responseMap = gson.fromJson(responseBody, Map::class.java) as? Map<String, Any>
-                val candidates = responseMap?.get("candidates") as? List<Map<String, Any>>
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                val responseBuilder = StringBuilder()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    responseBuilder.append(line)
+                }
+                reader.close()
 
-                if (!candidates.isNullOrEmpty()) {
-                    val firstCandidate = candidates[0]
-                    val contentObj = firstCandidate["content"] as? Map<String, Any>
-                    val parts = contentObj?.get("parts") as? List<Map<String, Any>>
-                    val textResult = parts?.getOrNull(0)?.get("text") as? String
+                val jsonResponse = JSONObject(responseBuilder.toString())
+                val candidates = jsonResponse.optJSONArray("candidates")
 
-                    if (!textResult.isNullOrEmpty()) {
-                        if (question.isNotBlank()) {
-                            conversationHistory.add(Pair("user", question))
-                        }
-                        conversationHistory.add(Pair("assistant", textResult))
+                if (candidates != null && candidates.length() > 0) {
+                    val firstCandidate = candidates.getJSONObject(0)
+                    val contentObj = firstCandidate.getJSONObject("content")
+                    val parts = contentObj.getJSONArray("parts")
+                    val textResult = parts.getJSONObject(0).getString("text")
 
-                        while (conversationHistory.size > 10) {
-                            conversationHistory.removeAt(0)
-                        }
-
-                        Result.success(textResult)
-                    } else {
-                        Result.failure(Exception("No text response found in Gemini payload"))
+                    if (question.isNotBlank()) {
+                        conversationHistory.add(Pair("user", question))
                     }
+                    conversationHistory.add(Pair("assistant", textResult))
+
+                    while (conversationHistory.size > 10) {
+                        conversationHistory.removeAt(0)
+                    }
+
+                    Result.success(textResult)
                 } else {
-                    Result.failure(Exception("No response candidates generated from Gemini"))
+                    Result.failure(Exception("No candidate text found in response"))
                 }
             } else {
-                Result.failure(Exception("API Error Code: ${response.code}"))
+                Result.failure(Exception("API Error Code: $responseCode"))
             }
 
         } catch (e: Exception) {
