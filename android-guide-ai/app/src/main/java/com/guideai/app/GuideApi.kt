@@ -44,7 +44,7 @@ object GuideApi {
                 question
             }
 
-            val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points.
+            val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points."
 
             val cleanImage = if (image.startsWith("data:image")) {
                 image.substringAfter(",")
