@@ -1,15 +1,14 @@
 package com.guideai.app
 
 import android.util.Base64
-import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 object GuideApi {
@@ -18,8 +17,6 @@ object GuideApi {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
-
-    private val gson = Gson()
 
     private const val ENCODED_KEY = "QVEuQWI4Uk42SjVtby1qS3Zhb1hnaXpLRm9aTE0xbEtNVWJuWHZMRGN2d2ltUk42T1ZQSXc="
 
@@ -60,49 +57,48 @@ object GuideApi {
                 image
             }
 
-            val jsonPayload = JsonObject().apply {
-                val contentsArray = JsonArray()
+            val contentsArray = JSONArray()
 
-                for ((role, content) in conversationHistory) {
-                    val turnObj = JsonObject().apply {
-                        addProperty("role", if (role == "user") "user" else "model")
-                        val partsArr = JsonArray()
-                        val textPart = JsonObject().apply { addProperty("text", content) }
-                        partsArr.add(textPart)
-                        add("parts", partsArr)
-                    }
-                    contentsArray.add(turnObj)
-                }
-
-                val currentContentObject = JsonObject().apply {
-                    addProperty("role", "user")
-                    val partsArray = JsonArray()
-
-                    val textPart = JsonObject().apply {
-                        addProperty("text", "$systemInstruction\n\nUser Question: $promptText")
-                    }
-                    partsArray.add(textPart)
-
-                    if (cleanImage.isNotBlank()) {
-                        val imagePart = JsonObject().apply {
-                            val inlineData = JsonObject().apply {
-                                addProperty("mime_type", "image/jpeg")
-                                addProperty("data", cleanImage)
-                            }
-                            add("inline_data", inlineData)
-                        }
-                        partsArray.add(imagePart)
-                    }
-
-                    add("parts", partsArray)
-                }
-
-                contentsArray.add(currentContentObject)
-                add("contents", contentsArray)
+            // Past conversation history
+            for ((role, content) in conversationHistory) {
+                val turnObj = JSONObject()
+                turnObj.put("role", if (role == "user") "user" else "model")
+                
+                val partsArr = JSONArray()
+                val textPart = JSONObject()
+                textPart.put("text", content)
+                partsArr.put(textPart)
+                
+                turnObj.put("parts", partsArr)
+                contentsArray.put(turnObj)
             }
 
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            val body = jsonPayload.toString().toRequestBody(mediaType)
+            // Current turn request
+            val currentContentObject = JSONObject()
+            currentContentObject.put("role", "user")
+            
+            val partsArray = JSONArray()
+            val textPart = JSONObject()
+            textPart.put("text", "$systemInstruction\n\nUser Question: $promptText")
+            partsArray.put(textPart)
+
+            if (cleanImage.isNotBlank()) {
+                val imagePart = JSONObject()
+                val inlineData = JSONObject()
+                inlineData.put("mime_type", "image/jpeg")
+                inlineData.put("data", cleanImage)
+                imagePart.put("inline_data", inlineData)
+                partsArray.put(imagePart)
+            }
+
+            currentContentObject.put("parts", partsArray)
+            contentsArray.put(currentContentObject)
+
+            val jsonPayload = JSONObject()
+            jsonPayload.put("contents", contentsArray)
+
+            val mediaType = MediaType.parse("application/json; charset=utf-8")
+            val body = RequestBody.create(mediaType, jsonPayload.toString())
 
             val request = Request.Builder()
                 .url(url)
@@ -110,17 +106,17 @@ object GuideApi {
                 .build()
 
             val response = client.newCall(request).execute()
-            val responseBody = response.body?.string()
+            val responseBody = response.body()?.string()
 
             if (response.isSuccessful && responseBody != null) {
-                val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-                val candidates = jsonResponse.getAsJsonArray("candidates")
+                val jsonResponse = JSONObject(responseBody)
+                val candidates = jsonResponse.optJSONArray("candidates")
 
-                if (candidates != null && candidates.size() > 0) {
-                    val firstCandidate = candidates.get(0).asJsonObject
-                    val contentObj = firstCandidate.getAsJsonObject("content")
-                    val parts = contentObj.getAsJsonArray("parts")
-                    val textResult = parts.get(0).asJsonObject.get("text").asString
+                if (candidates != null && candidates.length() > 0) {
+                    val firstCandidate = candidates.getJSONObject(0)
+                    val contentObj = firstCandidate.getJSONObject("content")
+                    val parts = contentObj.getJSONArray("parts")
+                    val textResult = parts.getJSONObject(0).getString("text")
 
                     if (question.isNotBlank()) {
                         conversationHistory.add(Pair("user", question))
@@ -136,7 +132,7 @@ object GuideApi {
                     Result.failure(Exception("No response generated from Gemini"))
                 }
             } else {
-                Result.failure(Exception("API Error Code: ${response.code}"))
+                Result.failure(Exception("API Error Code: ${response.code()}"))
             }
 
         } catch (e: Exception) {
