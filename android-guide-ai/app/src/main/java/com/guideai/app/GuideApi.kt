@@ -36,7 +36,7 @@ object GuideApi {
                 return@withContext Result.failure(Exception("API Key missing or invalid"))
             }
 
-            val urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
+            val urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$apiKey"
 
             val promptText = if (question.isBlank()) {
                 "Analyze this screen and tell the user what to do in very brief, clear steps."
@@ -44,7 +44,7 @@ object GuideApi {
                 question
             }
 
-            val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points. DO NOT use any brackets like (), markdown hashes, or conversational filler. Be extremely direct."
+            val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points.
 
             val cleanImage = if (image.startsWith("data:image")) {
                 image.substringAfter(",")
