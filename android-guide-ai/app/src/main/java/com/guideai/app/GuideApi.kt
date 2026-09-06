@@ -1,14 +1,15 @@
 package com.guideai.app
 
 import android.util.Base64
+import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
-import org.json.JSONArray
-import org.json.JSONObject
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 object GuideApi {
@@ -17,6 +18,8 @@ object GuideApi {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
+
+    private val gson = Gson()
 
     private const val ENCODED_KEY = "QVEuQWI4Uk42SjVtby1qS3Zhb1hnaXpLRm9aTE0xbEtNVWJuWHZMRGN2d2ltUk42T1ZQSXc="
 
@@ -41,7 +44,7 @@ object GuideApi {
                 return@withContext Result.failure(Exception("API Key missing or invalid"))
             }
 
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$apiKey"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
 
             val promptText = if (question.isBlank()) {
                 "Analyze this screen and tell the user what to do in very brief, clear steps."
@@ -49,7 +52,7 @@ object GuideApi {
                 question
             }
 
-            val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points.
+            val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points. DO NOT use any brackets like (), markdown hashes, or conversational filler. Be extremely direct."
 
             val cleanImage = if (image.startsWith("data:image")) {
                 image.substringAfter(",")
@@ -57,48 +60,45 @@ object GuideApi {
                 image
             }
 
-            val contentsArray = JSONArray()
+            val jsonPayload = JsonObject()
+            val contentsArray = JsonArray()
 
-            // Past conversation history
             for ((role, content) in conversationHistory) {
-                val turnObj = JSONObject()
-                turnObj.put("role", if (role == "user") "user" else "model")
+                val turnObj = JsonObject()
+                turnObj.addProperty("role", if (role == "user") "user" else "model")
                 
-                val partsArr = JSONArray()
-                val textPart = JSONObject()
-                textPart.put("text", content)
-                partsArr.put(textPart)
+                val partsArr = JsonArray()
+                val textPart = JsonObject()
+                textPart.addProperty("text", content)
+                partsArr.add(textPart)
                 
-                turnObj.put("parts", partsArr)
-                contentsArray.put(turnObj)
+                turnObj.add("parts", partsArr)
+                contentsArray.add(turnObj)
             }
 
-            // Current turn request
-            val currentContentObject = JSONObject()
-            currentContentObject.put("role", "user")
+            val currentContentObject = JsonObject()
+            currentContentObject.addProperty("role", "user")
             
-            val partsArray = JSONArray()
-            val textPart = JSONObject()
-            textPart.put("text", "$systemInstruction\n\nUser Question: $promptText")
-            partsArray.put(textPart)
+            val partsArray = JsonArray()
+            val textPart = JsonObject()
+            textPart.addProperty("text", "$systemInstruction\n\nUser Question: $promptText")
+            partsArray.add(textPart)
 
             if (cleanImage.isNotBlank()) {
-                val imagePart = JSONObject()
-                val inlineData = JSONObject()
-                inlineData.put("mime_type", "image/jpeg")
-                inlineData.put("data", cleanImage)
-                imagePart.put("inline_data", inlineData)
-                partsArray.put(imagePart)
+                val imagePart = JsonObject()
+                val inlineData = JsonObject()
+                inlineData.addProperty("mime_type", "image/jpeg")
+                inlineData.addProperty("data", cleanImage)
+                imagePart.add("inline_data", inlineData)
+                partsArray.add(imagePart)
             }
 
-            currentContentObject.put("parts", partsArray)
-            contentsArray.put(currentContentObject)
+            currentContentObject.add("parts", partsArray)
+            contentsArray.add(currentContentObject)
+            jsonPayload.add("contents", contentsArray)
 
-            val jsonPayload = JSONObject()
-            jsonPayload.put("contents", contentsArray)
-
-            val mediaType = MediaType.parse("application/json; charset=utf-8")
-            val body = RequestBody.create(mediaType, jsonPayload.toString())
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val body = jsonPayload.toString().toRequestBody(mediaType)
 
             val request = Request.Builder()
                 .url(url)
@@ -106,17 +106,17 @@ object GuideApi {
                 .build()
 
             val response = client.newCall(request).execute()
-            val responseBody = response.body()?.string()
+            val responseBody = response.body?.string()
 
             if (response.isSuccessful && responseBody != null) {
-                val jsonResponse = JSONObject(responseBody)
-                val candidates = jsonResponse.optJSONArray("candidates")
+                val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
+                val candidates = jsonResponse.getAsJsonArray("candidates")
 
-                if (candidates != null && candidates.length() > 0) {
-                    val firstCandidate = candidates.getJSONObject(0)
-                    val contentObj = firstCandidate.getJSONObject("content")
-                    val parts = contentObj.getJSONArray("parts")
-                    val textResult = parts.getJSONObject(0).getString("text")
+                if (candidates != null && candidates.size() > 0) {
+                    val firstCandidate = candidates.get(0).asJsonObject
+                    val contentObj = firstCandidate.getAsJsonObject("content")
+                    val parts = contentObj.getAsJsonArray("parts")
+                    val textResult = parts.get(0).asJsonObject.get("text").asString
 
                     if (question.isNotBlank()) {
                         conversationHistory.add(Pair("user", question))
@@ -132,7 +132,7 @@ object GuideApi {
                     Result.failure(Exception("No response generated from Gemini"))
                 }
             } else {
-                Result.failure(Exception("API Error Code: ${response.code()}"))
+                Result.failure(Exception("API Error Code: ${response.code}"))
             }
 
         } catch (e: Exception) {
