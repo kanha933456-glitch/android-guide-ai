@@ -2,8 +2,6 @@ package com.guideai.app
 
 import android.util.Base64
 import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -37,6 +35,7 @@ object GuideApi {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
     suspend fun explainVision(question: String, image: String): Result<String> = withContext(Dispatchers.IO) {
         try {
             val apiKey = getDecryptedKey()
@@ -60,45 +59,46 @@ object GuideApi {
                 image
             }
 
-            val jsonPayload = JsonObject()
-            val contentsArray = JsonArray()
+            val contentsList = mutableListOf<Map<String, Any>>()
 
+            // History add karna
             for ((role, content) in conversationHistory) {
-                val turnObj = JsonObject()
-                turnObj.addProperty("role", if (role == "user") "user" else "model")
-                
-                val partsArr = JsonArray()
-                val textPart = JsonObject()
-                textPart.addProperty("text", content)
-                partsArr.add(textPart)
-                
-                turnObj.add("parts", partsArr)
-                contentsArray.add(turnObj)
+                val roleName = if (role == "user") "user" else "model"
+                contentsList.add(
+                    mapOf(
+                        "role" to roleName,
+                        "parts" to listOf(mapOf("text" to content))
+                    )
+                )
             }
 
-            val currentContentObject = JsonObject()
-            currentContentObject.addProperty("role", "user")
-            
-            val partsArray = JsonArray()
-            val textPart = JsonObject()
-            textPart.addProperty("text", "$systemInstruction\n\nUser Question: $promptText")
-            partsArray.add(textPart)
+            // Current turn request
+            val currentParts = mutableListOf<Map<String, Any>>()
+            currentParts.add(mapOf("text" to "$systemInstruction\n\nUser Question: $promptText"))
 
             if (cleanImage.isNotBlank()) {
-                val imagePart = JsonObject()
-                val inlineData = JsonObject()
-                inlineData.addProperty("mime_type", "image/jpeg")
-                inlineData.addProperty("data", cleanImage)
-                imagePart.add("inline_data", inlineData)
-                partsArray.add(imagePart)
+                currentParts.add(
+                    mapOf(
+                        "inline_data" to mapOf(
+                            "mime_type" to "image/jpeg",
+                            "data" to cleanImage
+                        )
+                    )
+                )
             }
 
-            currentContentObject.add("parts", partsArray)
-            contentsArray.add(currentContentObject)
-            jsonPayload.add("contents", contentsArray)
+            contentsList.add(
+                mapOf(
+                    "role" to "user",
+                    "parts" to currentParts
+                )
+            )
+
+            val payloadMap = mapOf("contents" to contentsList)
+            val jsonPayload = gson.toJson(payloadMap)
 
             val mediaType = "application/json; charset=utf-8".toMediaType()
-            val body = jsonPayload.toString().toRequestBody(mediaType)
+            val body = jsonPayload.toRequestBody(mediaType)
 
             val request = Request.Builder()
                 .url(url)
@@ -109,27 +109,32 @@ object GuideApi {
             val responseBody = response.body?.string()
 
             if (response.isSuccessful && responseBody != null) {
-                val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-                val candidates = jsonResponse.getAsJsonArray("candidates")
+                // Pure Map Parsing (No Gson JsonObject method errors)
+                val responseMap = gson.fromJson(responseBody, Map::class.java) as? Map<String, Any>
+                val candidates = responseMap?.get("candidates") as? List<Map<String, Any>>
 
-                if (candidates != null && candidates.size() > 0) {
-                    val firstCandidate = candidates.get(0).asJsonObject
-                    val contentObj = firstCandidate.getAsJsonObject("content")
-                    val parts = contentObj.getAsJsonArray("parts")
-                    val textResult = parts.get(0).asJsonObject.get("text").asString
+                if (!candidates.isNullOrEmpty()) {
+                    val firstCandidate = candidates[0]
+                    val contentObj = firstCandidate["content"] as? Map<String, Any>
+                    val parts = contentObj?.get("parts") as? List<Map<String, Any>>
+                    val textResult = parts?.getOrNull(0)?.get("text") as? String
 
-                    if (question.isNotBlank()) {
-                        conversationHistory.add(Pair("user", question))
+                    if (!textResult.isNullOrEmpty()) {
+                        if (question.isNotBlank()) {
+                            conversationHistory.add(Pair("user", question))
+                        }
+                        conversationHistory.add(Pair("assistant", textResult))
+
+                        while (conversationHistory.size > 10) {
+                            conversationHistory.removeAt(0)
+                        }
+
+                        Result.success(textResult)
+                    } else {
+                        Result.failure(Exception("No text response found in Gemini payload"))
                     }
-                    conversationHistory.add(Pair("assistant", textResult))
-
-                    while (conversationHistory.size > 10) {
-                        conversationHistory.removeAt(0)
-                    }
-
-                    Result.success(textResult)
                 } else {
-                    Result.failure(Exception("No response generated from Gemini"))
+                    Result.failure(Exception("No response candidates generated from Gemini"))
                 }
             } else {
                 Result.failure(Exception("API Error Code: ${response.code}"))
