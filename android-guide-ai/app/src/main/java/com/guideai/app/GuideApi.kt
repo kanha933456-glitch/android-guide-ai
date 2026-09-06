@@ -2,6 +2,7 @@ package com.guideai.app
 
 import android.util.Base64
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,10 +21,9 @@ object GuideApi {
 
     private val gson = Gson()
 
-    // Step 1 me mili Base64 Encoded Key yahan paste karein
+    // Apni Base64 encoded key yahan paste karein
     private const val ENCODED_KEY = "QVEuQWI4Uk42SjVtby1qS3Zhb1hnaXpLRm9aTE0xbEtNVWJuWHZMRGN2d2ltUk42T1ZQSXc="
 
-    // Session-based conversation history
     private val conversationHistory = mutableListOf<Pair<String, String>>()
 
     fun clearHistory() {
@@ -45,7 +45,7 @@ object GuideApi {
                 return@withContext Result.failure(Exception("API Key missing or invalid"))
             }
 
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$apiKey"
 
             val promptText = if (question.isBlank()) {
                 "Analyze this screen and tell the user what to do in very brief, clear steps."
@@ -53,9 +53,7 @@ object GuideApi {
                 question
             }
 
-            // Clean, direct aur short output ke liye strict instruction
-            val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points. DO NOT use any brackets like (), markdown hashes, or conversational filler. Be extremely direct."
-
+            val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points.
             val cleanImage = if (image.startsWith("data:image")) {
                 image.substringAfter(",")
             } else {
@@ -63,13 +61,12 @@ object GuideApi {
             }
 
             val jsonPayload = JsonObject().apply {
-                val contentsArray = com.google.gson.JsonArray()
+                val contentsArray = JsonArray()
 
-                // Past conversation history add karna (Context maintain rakhne ke liye)
                 for ((role, content) in conversationHistory) {
                     val turnObj = JsonObject().apply {
                         addProperty("role", if (role == "user") "user" else "model")
-                        val partsArr = com.google.gson.JsonArray()
+                        val partsArr = JsonArray()
                         val textPart = JsonObject().apply { addProperty("text", content) }
                         partsArr.add(textPart)
                         add("parts", partsArr)
@@ -77,10 +74,9 @@ object GuideApi {
                     contentsArray.add(turnObj)
                 }
 
-                // Current turn request
                 val currentContentObject = JsonObject().apply {
                     addProperty("role", "user")
-                    val partsArray = com.google.gson.JsonArray()
+                    val partsArray = JsonArray()
 
                     val textPart = JsonObject().apply {
                         addProperty("text", "$systemInstruction\n\nUser Question: $promptText")
@@ -119,12 +115,13 @@ object GuideApi {
             if (response.isSuccessful && responseBody != null) {
                 val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
                 val candidates = jsonResponse.getAsJsonArray("candidates")
-                if (candidates != null && candidates.size() > 0) {
-                    val firstCandidate = candidates[0].asJsonObject
-                    val parts = firstCandidate.getAsJsonObject("content").getAsJsonArray("parts")
-                    val textResult = parts[0].asJsonObject.get("text").asString
 
-                    // Save history
+                if (candidates != null && candidates.size() > 0) {
+                    val firstCandidate = candidates.get(0).asJsonObject
+                    val contentObj = firstCandidate.getAsJsonObject("content")
+                    val parts = contentObj.getAsJsonArray("parts")
+                    val textResult = parts.get(0).asJsonObject.get("text").asString
+
                     if (question.isNotBlank()) {
                         conversationHistory.add(Pair("user", question))
                     }
