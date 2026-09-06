@@ -2,8 +2,7 @@ package com.guideai.app
 
 import android.util.Base64
 import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -21,7 +20,7 @@ object GuideApi {
 
     private val gson = Gson()
 
-    // Apni Base64 encoded key yahan paste karein
+    // Aapki Base64 Key Yahan Paste Kar Di Gayi Hai
     private const val ENCODED_KEY = "QVEuQWI4Uk42SjVtby1qS3Zhb1hnaXpLRm9aTE0xbEtNVWJuWHZMRGN2d2ltUk42T1ZQSXc="
 
     private val conversationHistory = mutableListOf<Pair<String, String>>()
@@ -54,55 +53,48 @@ object GuideApi {
             }
 
             val systemInstruction = "You are Guide AI, a mobile assistant. Explain what is on screen or answer the query directly. Keep answers under 3-4 bullet points.
+
             val cleanImage = if (image.startsWith("data:image")) {
                 image.substringAfter(",")
             } else {
                 image
             }
 
-            val jsonPayload = JsonObject().apply {
-                val contentsArray = JsonArray()
+            val contentsList = mutableListOf<Content>()
 
-                for ((role, content) in conversationHistory) {
-                    val turnObj = JsonObject().apply {
-                        addProperty("role", if (role == "user") "user" else "model")
-                        val partsArr = JsonArray()
-                        val textPart = JsonObject().apply { addProperty("text", content) }
-                        partsArr.add(textPart)
-                        add("parts", partsArr)
-                    }
-                    contentsArray.add(turnObj)
-                }
-
-                val currentContentObject = JsonObject().apply {
-                    addProperty("role", "user")
-                    val partsArray = JsonArray()
-
-                    val textPart = JsonObject().apply {
-                        addProperty("text", "$systemInstruction\n\nUser Question: $promptText")
-                    }
-                    partsArray.add(textPart)
-
-                    if (cleanImage.isNotBlank()) {
-                        val imagePart = JsonObject().apply {
-                            val inlineData = JsonObject().apply {
-                                addProperty("mime_type", "image/jpeg")
-                                addProperty("data", cleanImage)
-                            }
-                            add("inline_data", inlineData)
-                        }
-                        partsArray.add(imagePart)
-                    }
-
-                    add("parts", partsArray)
-                }
-
-                contentsArray.add(currentContentObject)
-                add("contents", contentsArray)
+            // Conversation history add karein
+            for ((role, contentText) in conversationHistory) {
+                val turnRole = if (role == "user") "user" else "model"
+                contentsList.add(
+                    Content(
+                        role = turnRole,
+                        parts = listOf(Part(text = contentText))
+                    )
+                )
             }
 
+            // Current request parts
+            val currentParts = mutableListOf<Part>()
+            currentParts.add(Part(text = "$systemInstruction\n\nUser Question: $promptText"))
+
+            if (cleanImage.isNotBlank()) {
+                currentParts.add(
+                    Part(
+                        inlineData = InlineData(
+                            mimeType = "image/jpeg",
+                            data = cleanImage
+                        )
+                    )
+                )
+            }
+
+            contentsList.add(Content(role = "user", parts = currentParts))
+
+            val requestBodyObj = GeminiRequest(contents = contentsList)
+            val jsonString = gson.toJson(requestBodyObj)
+
             val mediaType = "application/json; charset=utf-8".toMediaType()
-            val body = jsonPayload.toString().toRequestBody(mediaType)
+            val body = jsonString.toRequestBody(mediaType)
 
             val request = Request.Builder()
                 .url(url)
@@ -113,15 +105,10 @@ object GuideApi {
             val responseBody = response.body?.string()
 
             if (response.isSuccessful && responseBody != null) {
-                val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-                val candidates = jsonResponse.getAsJsonArray("candidates")
+                val geminiResponse = gson.fromJson(responseBody, GeminiResponse::class.java)
+                val textResult = geminiResponse.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
 
-                if (candidates != null && candidates.size() > 0) {
-                    val firstCandidate = candidates.get(0).asJsonObject
-                    val contentObj = firstCandidate.getAsJsonObject("content")
-                    val parts = contentObj.getAsJsonArray("parts")
-                    val textResult = parts.get(0).asJsonObject.get("text").asString
-
+                if (!textResult.isNullOrEmpty()) {
                     if (question.isNotBlank()) {
                         conversationHistory.add(Pair("user", question))
                     }
@@ -133,7 +120,7 @@ object GuideApi {
 
                     Result.success(textResult)
                 } else {
-                    Result.failure(Exception("No response generated from Gemini"))
+                    Result.failure(Exception("No response text found in Gemini response"))
                 }
             } else {
                 Result.failure(Exception("API Error Code: ${response.code}"))
@@ -143,4 +130,41 @@ object GuideApi {
             Result.failure(e)
         }
     }
+
+    // --- Request Models ---
+    private data class GeminiRequest(
+        val contents: List<Content>
+    )
+
+    private data class Content(
+        val role: String,
+        val parts: List<Part>
+    )
+
+    private data class Part(
+        val text: String? = null,
+        @SerializedName("inline_data") val inlineData: InlineData? = null
+    )
+
+    private data class InlineData(
+        @SerializedName("mime_type") val mimeType: String,
+        val data: String
+    )
+
+    // --- Response Models ---
+    private data class GeminiResponse(
+        val candidates: List<Candidate>?
+    )
+
+    private data class Candidate(
+        val content: ResponseContent?
+    )
+
+    private data class ResponseContent(
+        val parts: List<ResponsePart>?
+    )
+
+    private data class ResponsePart(
+        val text: String?
+    )
 }
