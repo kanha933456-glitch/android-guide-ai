@@ -46,7 +46,9 @@ export async function POST(req: Request) {
       }, { status: response.status });
     }
 
-    const guidance = data.output_text || "";
+    const steps = data.steps || [];
+    const modelOutput = steps.find((s: any) => s.type === "model_output");
+    const guidance = modelOutput?.content?.find((c: any) => c.type === "text")?.text || "";
 
     if (!guidance) {
       return Response.json({ error: 'EMPTY_RESPONSE', message: 'Gemini returned empty response' }, { status: 500 });
