@@ -46,7 +46,12 @@ object ScreenCapture {
         var virtualDisplay: android.hardware.display.VirtualDisplay? = null
 
         return try {
-            reader = ImageReader.newInstance(metrics.widthPixels, metrics.heightPixels, PixelFormat.RGBA_8888, 2)
+            reader = ImageReader.newInstance(
+                metrics.widthPixels,
+                metrics.heightPixels,
+                PixelFormat.RGBA_8888,
+                2
+            )
             virtualDisplay = activeProjection.createVirtualDisplay(
                 "GuideAI",
                 metrics.widthPixels,
@@ -57,18 +62,37 @@ object ScreenCapture {
                 null,
                 null
             )
-            Thread.sleep(300)
-            val image = reader.acquireLatestImage() ?: return null
-            val plane = image.planes[0]
-            val bitmap = Bitmap.createBitmap(plane.rowStride / plane.pixelStride, metrics.heightPixels, Bitmap.Config.ARGB_8888)
+
+            // Retry logic — 5 baar try karo 200ms interval par
+            var image: android.media.Image? = null
+            repeat(5) {
+                if (image == null) {
+                    Thread.sleep(200)
+                    image = reader?.acquireLatestImage()
+                }
+            }
+
+            if (image == null) return null
+
+            val plane = image!!.planes[0]
+            val bitmap = Bitmap.createBitmap(
+                plane.rowStride / plane.pixelStride,
+                metrics.heightPixels,
+                Bitmap.Config.ARGB_8888
+            )
             bitmap.copyPixelsFromBuffer(plane.buffer)
-            image.close()
+            image!!.close()
+
             val output = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 70, output)
-            val encoded = "data:image/jpeg;base64," + Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+            val encoded = "data:image/jpeg;base64," + Base64.encodeToString(
+                output.toByteArray(),
+                Base64.NO_WRAP
+            )
             bitmap.recycle()
             output.reset()
             encoded
+
         } catch (e: Exception) {
             null
         } finally {
@@ -80,6 +104,8 @@ object ScreenCapture {
     fun stop(context: Context) {
         try { projection?.stop() } catch (e: Exception) {}
         projection = null
-        try { context.stopService(Intent(context, CaptureService::class.java)) } catch (e: Exception) {}
+        try {
+            context.stopService(Intent(context, CaptureService::class.java))
+        } catch (e: Exception) {}
     }
 }
