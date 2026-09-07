@@ -52,14 +52,8 @@ export async function POST(req: Request) {
       }, { status: response.status });
     }
 
-    const guidance = data.output_text || "";
-    const interactionId = data.id || "";
-
-    if (!guidance) {
-      return Response.json({ error: 'EMPTY_RESPONSE', message: 'Gemini returned empty response' }, { status: 500 });
-    }
-
-    return Response.json({ guidance, interactionId });
+    // Poora response bhej do — dekho kya aata hai
+    return Response.json({ guidance: JSON.stringify(data), interactionId: data.id || "" });
 
   } catch (error: any) {
     console.error("Chat Processing Error:", error);
