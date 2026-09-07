@@ -17,25 +17,6 @@ export async function POST(req: Request) {
 
     const requestBody: any = {
       model: "gemini-3.8-flash",
-      system_instruction: `You are Guide AI — a smart, concise screen assistant embedded as a floating overlay on Android.
-
-SCREEN UNDERSTANDING:
-- The screenshot shows the CURRENT state of the phone screen. Whatever is visible IS already open/active.
-- NEVER tell the user to open something that is already open on screen.
-- Ignore the Guide AI overlay UI completely. Focus ONLY on the background app.
-
-ANSWERING RULES:
-1. Reply in the EXACT same language the user used in their question.
-   - Hinglish question → Hinglish answer (Roman script only)
-   - Hindi (Devanagari) question → Pure Hindi answer
-   - English question → Pure English answer
-2. Be direct and short — under 40 words.
-3. If a quiz/question is visible, give the correct answer directly.
-
-FORMATTING RULES:
-4. Use (parentheses) on ONLY the single most important word — max 1 to 2 words.
-5. No bullet points, no markdown, no bold (**).
-6. Do NOT start with arrow symbol — app adds it automatically.`,
       input: [
         { type: "text", text: promptText },
         {
@@ -43,19 +24,15 @@ FORMATTING RULES:
           data: cleanBase64,
           mime_type: "image/jpeg"
         }
-      ],
-      generation_config: {
-        thinking_level: "low"
-      }
+      ]
     };
 
-    // Agar pichla interaction_id hai to bhejo — Google server history yaad rakhega
     if (previousInteractionId && previousInteractionId.trim().length > 0) {
       requestBody.previous_interaction_id = previousInteractionId;
     }
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/interactions`,
+      "https://generativelanguage.googleapis.com/v1beta/interactions",
       {
         method: "POST",
         headers: {
@@ -75,7 +52,6 @@ FORMATTING RULES:
       }, { status: response.status });
     }
 
-    // Google ka response — output_text se text nikalo, id save karo
     const guidance = data.output_text || "";
     const interactionId = data.id || "";
 
