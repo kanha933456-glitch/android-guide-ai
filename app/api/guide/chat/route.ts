@@ -52,8 +52,17 @@ export async function POST(req: Request) {
       }, { status: response.status });
     }
 
-    // Poora response bhej do — dekho kya aata hai
-    return Response.json({ guidance: JSON.stringify(data), interactionId: data.id || "" });
+    // steps array se model_output ka text nikalo
+    const steps = data.steps || [];
+    const modelOutput = steps.find((s: any) => s.type === "model_output");
+    const guidance = modelOutput?.content?.find((c: any) => c.type === "text")?.text || "";
+    const interactionId = data.id || "";
+
+    if (!guidance) {
+      return Response.json({ error: 'EMPTY_RESPONSE', message: 'Gemini returned empty response' }, { status: 500 });
+    }
+
+    return Response.json({ guidance, interactionId });
 
   } catch (error: any) {
     console.error("Chat Processing Error:", error);
