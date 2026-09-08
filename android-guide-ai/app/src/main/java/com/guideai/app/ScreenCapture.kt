@@ -42,20 +42,27 @@ object ScreenCapture {
         @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getRealMetrics(metrics)
 
+        val fullWidth = metrics.widthPixels
+        val fullHeight = metrics.heightPixels
+
+        // Overlay ki height roughly 45% hai screen ki
+        // Sirf upar wala 55% capture karo
+        val captureHeight = (fullHeight * 0.55).toInt()
+
         var reader: ImageReader? = null
         var virtualDisplay: android.hardware.display.VirtualDisplay? = null
 
         return try {
             reader = ImageReader.newInstance(
-                metrics.widthPixels,
-                metrics.heightPixels,
+                fullWidth,
+                fullHeight,
                 PixelFormat.RGBA_8888,
                 2
             )
             virtualDisplay = activeProjection.createVirtualDisplay(
                 "GuideAI",
-                metrics.widthPixels,
-                metrics.heightPixels,
+                fullWidth,
+                fullHeight,
                 metrics.densityDpi,
                 0,
                 reader.surface,
@@ -63,11 +70,11 @@ object ScreenCapture {
                 null
             )
 
-            // Retry logic — 5 baar try karo 200ms interval par
+            // Retry logic — 5 baar try karo 100ms interval par
             var image: android.media.Image? = null
             repeat(5) {
                 if (image == null) {
-                    Thread.sleep(200)
+                    Thread.sleep(100)
                     image = reader?.acquireLatestImage()
                 }
             }
@@ -75,21 +82,37 @@ object ScreenCapture {
             if (image == null) return null
 
             val plane = image!!.planes[0]
-            val bitmap = Bitmap.createBitmap(
-                plane.rowStride / plane.pixelStride,
-                metrics.heightPixels,
+            val rowStride = plane.rowStride
+            val pixelStride = plane.pixelStride
+            val bitmapWidth = rowStride / pixelStride
+
+            // Poori screen ka bitmap banao
+            val fullBitmap = Bitmap.createBitmap(
+                bitmapWidth,
+                fullHeight,
                 Bitmap.Config.ARGB_8888
             )
-            bitmap.copyPixelsFromBuffer(plane.buffer)
+            fullBitmap.copyPixelsFromBuffer(plane.buffer)
             image!!.close()
 
+            // Sirf upar wala hissa crop karo — overlay ke neeche wala nahi
+            val croppedBitmap = Bitmap.createBitmap(
+                fullBitmap,
+                0,
+                0,
+                fullWidth.coerceAtMost(bitmapWidth),
+                captureHeight
+            )
+            fullBitmap.recycle()
+
+            // Quality 55 — size aur bhi chhoti
             val output = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 70, output)
+            croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 55, output)
             val encoded = "data:image/jpeg;base64," + Base64.encodeToString(
                 output.toByteArray(),
                 Base64.NO_WRAP
             )
-            bitmap.recycle()
+            croppedBitmap.recycle()
             output.reset()
             encoded
 
