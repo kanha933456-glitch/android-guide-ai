@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       : "Detect the main item, question, or task on the background screen and provide direct, actionable help or the answer.";
 
     const requestBody: any = {
-      model: "gemini-3.8-flash",
+      model: "gemini-3.6-flash",
       input: [
         { type: "text", text: promptText },
         {
