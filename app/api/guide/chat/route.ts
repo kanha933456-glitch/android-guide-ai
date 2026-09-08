@@ -28,6 +28,7 @@ FORMATTING RULES:
 - No markdown: no **, no ##, no ***, no bullet points, no numbered lists like 1. 2. 3.
 - No emojis in response — not even smiley faces.
 - Plain text only — clean sentences.
+- Keep response short and direct.`,
       input: [
         { type: "text", text: promptText },
         {
