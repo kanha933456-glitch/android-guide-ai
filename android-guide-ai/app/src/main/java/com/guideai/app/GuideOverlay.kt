@@ -22,7 +22,6 @@ import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -44,6 +43,16 @@ object GuideOverlay {
     private const val ARROW_PREFIX = "➤ "
     private const val ARROW_COLOR = "#F7B955"
     private const val HIGHLIGHT_COLOR = "#FFD54F"
+
+    // Welcome messages — object level par, function ke bahar
+    private val welcomeMessages = listOf(
+        "Hello I'm GUIDE AI Your screen and assist helper",
+        "Hello! How can I help you today?",
+        "Guide AI is ready! Don't give up, a solution will definitely be found.",
+        "Namaste! Come on, let's make whatever is difficult easier together.",
+        "Don't stop! If you have a problem somewhere, ask Guide AI.",
+        "Are you ready? Come on, let's solve the problem!"
+    )
 
     fun show(context: Context, stuck: Boolean = false) {
         if (!GuideSettings.isActive(context)) {
@@ -154,13 +163,10 @@ object GuideOverlay {
         val dialog = BottomSheetDialog(context)
         activeDialog = dialog
 
-        // isKeyboardShowing — ViewTreeObserver se track hoga, manually set nahi karenge
-        // taaki state hamesha accurate rahe
         var keyboardCurrentlyVisible = false
 
         val mainLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            // Height kam ki — chhota overlay
             setPadding(36, 24, 36, 28)
             setBackgroundColor(Color.parseColor("#121824"))
         }
@@ -200,7 +206,6 @@ object GuideOverlay {
         titleRow.addView(offButton)
         mainLayout.addView(titleRow)
 
-        // ScrollView height kam ki — 130dp, chhota overlay ke liye
         val scrollContainer = ScrollView(context).apply {
             val maxHeight = (130 * context.resources.displayMetrics.density).toInt()
             layoutParams = LinearLayout.LayoutParams(
@@ -210,14 +215,13 @@ object GuideOverlay {
             isVerticalScrollBarEnabled = true
         }
 
-        private val welcomeMessages = listOf(
-    "Hello I'm GUIDE AI Your screen and assist helper",
-    "Hello! How can I help you today?",
-    "Guide AI is ready! Don't give up, a solution will definitely be found.",
-    "Namaste! Come on, let's make whatever is difficult easier together.",
-    "Don't stop! If you have a problem somewhere, ask Guide AI.",
-    "Are you ready? Come on, let's solve the problem!"
-)
+        // guidance pehle define karo — random welcome message
+        val guidance = TextView(context).apply {
+            text = buildFormattedSpannable(welcomeMessages.random())
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            setPadding(0, 10, 0, 10)
+        }
         scrollContainer.addView(guidance)
         mainLayout.addView(scrollContainer)
 
@@ -343,9 +347,6 @@ object GuideOverlay {
             }
         }
 
-        // CANCEL button — behaviour:
-        // Keyboard khula hai → sirf keyboard band karo, overlay rakho
-        // Keyboard band hai → overlay band karo
         val closeBtn = Button(context).apply {
             text = "CANCEL"
             textSize = 11f
@@ -354,14 +355,11 @@ object GuideOverlay {
             setBackgroundColor(Color.parseColor("#37474F"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                // State directly check karo — variable par depend mat karo
                 val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                 if (imm.isAcceptingText) {
-                    // Keyboard khula hai — sirf keyboard band karo
                     hideKeyboard(context, questionInput)
                     questionInput.clearFocus()
                 } else {
-                    // Keyboard band hai — overlay band karo
                     GuideApi.clearHistory()
                     dialog.dismiss()
                     activeDialog = null
@@ -385,39 +383,28 @@ object GuideOverlay {
         dialog.window?.let { window ->
             window.setType(dialogType)
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-
-            // FLAG_NOT_TOUCH_MODAL — overlay ke bahar ka touch screen tak jaaye (pass-through)
-            // FLAG_WATCH_OUTSIDE_TOUCH — bahar ke touch ka pata chale
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
             )
-
-            // Keyboard state track karo ViewTreeObserver se — ye sabse reliable tarika hai
             window.decorView.viewTreeObserver.addOnGlobalLayoutListener(object :
                 ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
                     keyboardCurrentlyVisible = isKeyboardVisible(window.decorView)
                 }
             })
-
-            // Bahar tap hone par:
-            // - Keyboard khula hai → keyboard + overlay dono band karo
-            // - Keyboard band hai → kuch mat karo (touch pass-through hoga screen tak)
             window.decorView.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_OUTSIDE) {
                     val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                     if (imm.isAcceptingText) {
-                        // Keyboard khula hai — dono band karo
                         hideKeyboard(context, questionInput)
                         questionInput.clearFocus()
                         GuideApi.clearHistory()
                         dialog.dismiss()
                         activeDialog = null
                     }
-                    // Keyboard band hai — kuch nahi, touch pass through karega
                 }
-                false // false return karo taaki touch aage jaaye screen tak
+                false
             }
         }
 
@@ -449,7 +436,25 @@ object GuideOverlay {
     }
 
     private fun speakText(text: String) {
-        val cleanSpeech = text.replace(Regex("[➤\\*\\#\\[\\]\\(\\)]"), "")
+        val cleanSpeech = text
+            // Markdown hatao
+            .replace(Regex("\\*{1,3}"), "")
+            .replace(Regex("#{1,6}\\s?"), "")
+            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
+            // Arrow aur brackets hatao
+            .replace("➤", "")
+            .replace(Regex("[\\[\\]\\(\\)]"), "")
+            // Emojis hatao
+            .replace(Regex("[\uD83C-\uDBFF\uDC00-\uDFFF]+"), "")
+            .replace(Regex("[\u2600-\u27BF]"), "")
+            .replace(Regex("[\u2300-\u23FF]"), "")
+            // Numbers ke saath dot remove karo (1. 2. 3.)
+            .replace(Regex("(\\d+)\\.\\s"), "$1 ")
+            // VM aur naam sahi pronounce ho
+            .replace("VM", "V M")
+            .replace("Vikash K. Ray", "Vikash Kay Ray")
+            .replace("Vikash K Ray", "Vikash Kay Ray")
+            // Extra spaces
             .replace(Regex("\\s+"), " ")
             .trim()
 
