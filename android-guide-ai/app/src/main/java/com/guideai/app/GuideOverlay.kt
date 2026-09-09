@@ -426,14 +426,24 @@ object GuideOverlay {
     }
 
     private fun initTTS(context: Context) {
-        if (ttsEngine != null) return
-        ttsEngine = TextToSpeech(context, { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                ttsEngine?.setSpeechRate(0.92f)
-                ttsEngine?.setPitch(1.0f)
+    if (ttsEngine != null) return
+    ttsEngine = TextToSpeech(context, { status ->
+        if (status == TextToSpeech.SUCCESS) {
+            // Hindi locale try karo pehle
+            val hindiLocale = Locale("hi", "IN")
+            val hindiResult = ttsEngine?.isLanguageAvailable(hindiLocale)
+            if (hindiResult == TextToSpeech.LANG_AVAILABLE ||
+                hindiResult == TextToSpeech.LANG_COUNTRY_AVAILABLE) {
+                ttsEngine?.language = hindiLocale
+            } else {
+                // Fallback English India
+                ttsEngine?.language = Locale("en", "IN")
             }
-        }, "com.google.android.tts")
-    }
+            ttsEngine?.setSpeechRate(0.88f)
+            ttsEngine?.setPitch(1.05f)
+        }
+    }, "com.google.android.tts")
+}
 
     private fun speakText(text: String) {
         val cleanSpeech = text
