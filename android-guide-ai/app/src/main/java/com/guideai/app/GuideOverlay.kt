@@ -210,12 +210,14 @@ object GuideOverlay {
             isVerticalScrollBarEnabled = true
         }
 
-        val guidance = TextView(context).apply {
-            text = buildFormattedSpannable("Hello! How can I help you today?")
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            setPadding(0, 10, 0, 10)
-        }
+        private val welcomeMessages = listOf(
+    "Hello I'm GUIDE AI Your screen and assist helper",
+    "Hello! How can I help you today?",
+    "Guide AI is ready! Don't give up, a solution will definitely be found.",
+    "Namaste! Come on, let's make whatever is difficult easier together.",
+    "Don't stop! If you have a problem somewhere, ask Guide AI.",
+    "Are you ready? Come on, let's solve the problem!"
+)
         scrollContainer.addView(guidance)
         mainLayout.addView(scrollContainer)
 
