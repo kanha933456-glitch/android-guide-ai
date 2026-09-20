@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       : "Detect the main item, question, or task on the background screen and provide direct, actionable help or the answer.";
 
     const requestBody: any = {
-      model: "gemini-3.6-flash",
+      model: "gemini-3.5-flash-lite",
       system_instruction: `You are Guide AI, a screen assistant app built by VM (Vikash K. Ray), a young developer from India. Guide AI was developed on 4th September 2026.
 
 IDENTITY RULES:
@@ -28,7 +28,6 @@ FORMATTING RULES:
 - No markdown: no **, no ##, no ***, no bullet points, no numbered lists like 1. 2. 3.
 - No emojis in response — not even smiley faces.
 - Plain text only — clean sentences.
-- Keep response short and direct.`,
       input: [
         { type: "text", text: promptText },
         {
@@ -36,7 +35,10 @@ FORMATTING RULES:
           data: cleanBase64,
           mime_type: "image/jpeg"
         }
-      ]
+      ],
+      generation_config: {
+        thinking_level: "low"
+      }
     };
 
     if (previousInteractionId && previousInteractionId.trim().length > 0) {
@@ -82,4 +84,4 @@ FORMATTING RULES:
       message: error?.message || 'Unknown server error'
     }, { status: 500 });
   }
-}
+        }
