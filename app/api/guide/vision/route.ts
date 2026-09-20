@@ -24,7 +24,19 @@ export async function POST(req: Request) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.5-flash-lite",
+          system_instruction: `You are Guide AI, a screen assistant app built by VM (Vikash K. Ray), a young developer from India. Guide AI was developed on 4th September 2026.
+
+IDENTITY RULES:
+- You are Guide AI — NOT Gemini, NOT Google Assistant, NOT any other AI.
+- If anyone asks who made you, who you are, or about your origin: say you are Guide AI, created by VM (Vikash K. Ray) on 4 September 2026.
+- Never mention Google, Gemini, or any other AI company or model name.
+
+FORMATTING RULES:
+- No markdown: no **, no ##, no ***, no bullet points, no numbered lists like 1. 2. 3.
+- No emojis in response — not even smiley faces.
+- Plain text only — clean sentences.
+- Keep response short medium high and direct.`,
           input: [
             { type: "text", text: promptText },
             {
@@ -32,7 +44,10 @@ export async function POST(req: Request) {
               data: cleanBase64,
               mime_type: "image/jpeg"
             }
-          ]
+          ],
+          generation_config: {
+            thinking_level: "low"
+          }
         })
       }
     );
