@@ -1,5 +1,5 @@
 package com.guideai.app
-
+ 
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -30,7 +30,7 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
+ 
 object GuideOverlay {
     private var windowManager: WindowManager? = null
     private var bubbleView: View? = null
@@ -39,12 +39,11 @@ object GuideOverlay {
     var isPaused = false
     private var ttsEngine: TextToSpeech? = null
     private var hasAnsweredOnce = false
-
+ 
     private const val ARROW_PREFIX = "➤ "
     private const val ARROW_COLOR = "#F7B955"
     private const val HIGHLIGHT_COLOR = "#FFD54F"
-
-    // Welcome messages — object level par, function ke bahar
+ 
     private val welcomeMessages = listOf(
         "Hello I'm GUIDE AI Your screen and assist helper",
         "Hello! How can I help you today?",
@@ -53,24 +52,24 @@ object GuideOverlay {
         "Don't stop! If you have a problem somewhere, ask Guide AI.",
         "Are you ready? Come on, let's solve the problem!"
     )
-
+ 
     fun show(context: Context, stuck: Boolean = false) {
         if (!GuideSettings.isActive(context)) {
             forceHide()
             return
         }
-
+ 
         val appContext = context.applicationContext
         hideBubbleOnly()
-
+ 
         try {
             windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             if (GuideSettings.voiceEnabled(appContext)) {
                 initTTS(appContext)
             }
-
+ 
             val size = (56 * appContext.resources.displayMetrics.density).toInt()
-
+ 
             val icon = Button(appContext).apply {
                 text = "G"
                 setTextColor(Color.parseColor("#121824"))
@@ -87,14 +86,14 @@ object GuideOverlay {
                     elevation = 16f
                 }
             }
-
+ 
             val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             } else {
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE
             }
-
+ 
             val params = WindowManager.LayoutParams(
                 size, size, layoutType,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -104,13 +103,13 @@ object GuideOverlay {
                 x = 40
                 y = 400
             }
-
+ 
             icon.setOnTouchListener(object : View.OnTouchListener {
                 private var initialX = 0
                 private var initialY = 0
                 private var initialTouchX = 0f
                 private var initialTouchY = 0f
-
+ 
                 override fun onTouch(v: View, event: MotionEvent): Boolean {
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
@@ -138,15 +137,15 @@ object GuideOverlay {
                     return false
                 }
             })
-
+ 
             windowManager?.addView(icon, params)
             bubbleView = icon
-
+ 
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
-
+ 
     private fun isKeyboardVisible(rootView: View): Boolean {
         val rect = android.graphics.Rect()
         rootView.getWindowVisibleDisplayFrame(rect)
@@ -154,28 +153,28 @@ object GuideOverlay {
         val keypadHeight = screenHeight - rect.bottom
         return keypadHeight > screenHeight * 0.15
     }
-
+ 
     private fun showGuideDialog(context: Context) {
         activeDialog?.dismiss()
         activeDialog = null
         hasAnsweredOnce = false
-
+ 
         val dialog = BottomSheetDialog(context)
         activeDialog = dialog
-
+ 
         var keyboardCurrentlyVisible = false
-
+ 
         val mainLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(36, 24, 36, 28)
             setBackgroundColor(Color.parseColor("#121824"))
         }
-
+ 
         val titleRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-
+ 
         val title = TextView(context).apply {
             text = "Guide AI"
             setTextColor(Color.parseColor("#F7B955"))
@@ -183,7 +182,7 @@ object GuideOverlay {
             setTypeface(null, Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-
+ 
         val offButton = Button(context).apply {
             text = "OFF"
             textSize = 10f
@@ -201,11 +200,10 @@ object GuideOverlay {
                 forceHide()
             }
         }
-
+ 
         titleRow.addView(title)
         titleRow.addView(offButton)
         mainLayout.addView(titleRow)
-
         val scrollContainer = ScrollView(context).apply {
             val maxHeight = (130 * context.resources.displayMetrics.density).toInt()
             layoutParams = LinearLayout.LayoutParams(
@@ -214,8 +212,7 @@ object GuideOverlay {
             )
             isVerticalScrollBarEnabled = true
         }
-
-        // guidance pehle define karo — random welcome message
+ 
         val guidance = TextView(context).apply {
             text = buildFormattedSpannable(welcomeMessages.random())
             setTextColor(Color.WHITE)
@@ -224,31 +221,31 @@ object GuideOverlay {
         }
         scrollContainer.addView(guidance)
         mainLayout.addView(scrollContainer)
-
+ 
         val userQuestionContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(16, 12, 16, 12)
             setBackgroundColor(Color.parseColor("#1E2A38"))
             visibility = View.GONE
         }
-
+ 
         val userQuestionHeader = TextView(context).apply {
             text = "YOUR QUESTION:"
             setTextColor(Color.parseColor("#00E5FF"))
             textSize = 10f
             setTypeface(null, Typeface.BOLD)
         }
-
+ 
         val userQuestionText = TextView(context).apply {
             setTextColor(Color.parseColor("#E0F7FA"))
             textSize = 12f
             setTypeface(null, Typeface.BOLD_ITALIC)
         }
-
+ 
         userQuestionContainer.addView(userQuestionHeader)
         userQuestionContainer.addView(userQuestionText)
         mainLayout.addView(userQuestionContainer)
-
+ 
         val questionInput = EditText(context).apply {
             hint = "Ask a question..."
             setTextColor(Color.WHITE)
@@ -258,12 +255,12 @@ object GuideOverlay {
             setBackgroundColor(Color.parseColor("#263344"))
         }
         mainLayout.addView(questionInput)
-
+ 
         val btnRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 16, 0, 0)
         }
-
+ 
         val askBtn = Button(context).apply {
             text = "ASK ABOUT SCREEN"
             textSize = 11f
@@ -274,7 +271,7 @@ object GuideOverlay {
                 marginEnd = 10
             }
         }
-
+ 
         questionInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -289,30 +286,42 @@ object GuideOverlay {
                 }
             }
         })
-
+ 
         askBtn.setOnClickListener {
             val inputQuery = questionInput.text.toString().trim()
             hideKeyboard(context, questionInput)
-
+ 
             if (inputQuery.isNotEmpty()) {
                 userQuestionText.text = "\"$inputQuery\""
                 userQuestionContainer.visibility = View.VISIBLE
             }
-
+ 
             askBtn.text = "THINKING..."
             askBtn.isEnabled = false
             isBusy = true
-
+ 
+            // Pehle "THINKING..." show karo, phir streaming shuru
+            guidance.text = buildFormattedSpannable("...")
+ 
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val imageStr = ScreenCapture.capture(context)
                     if (!imageStr.isNullOrEmpty()) {
-                        GuideApi.explainVision(inputQuery, imageStr)
-                            .onSuccess { answer ->
+                        GuideApi.explainVision(
+                            question = inputQuery,
+                            image = imageStr,
+                            onChunk = { partialText ->
+                                // Har chunk par UI real-time update
                                 CoroutineScope(Dispatchers.Main).launch {
-                                    guidance.text = buildFormattedSpannable(answer)
+                                    guidance.text = buildFormattedSpannable(partialText)
+                                }
+                            }
+                        )
+                            .onSuccess { finalAnswer ->
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    guidance.text = buildFormattedSpannable(finalAnswer)
                                     if (GuideSettings.voiceEnabled(context)) {
-                                        speakText(answer)
+                                        speakText(finalAnswer)
                                     }
                                     hasAnsweredOnce = true
                                     askBtn.text = "ASK AGAIN"
@@ -346,7 +355,7 @@ object GuideOverlay {
                 }
             }
         }
-
+ 
         val closeBtn = Button(context).apply {
             text = "CANCEL"
             textSize = 11f
@@ -366,20 +375,20 @@ object GuideOverlay {
                 }
             }
         }
-
+ 
         btnRow.addView(askBtn)
         btnRow.addView(closeBtn)
         mainLayout.addView(btnRow)
-
+ 
         dialog.setContentView(mainLayout)
-
+ 
         val dialogType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-
+ 
         dialog.window?.let { window ->
             window.setType(dialogType)
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
@@ -407,75 +416,67 @@ object GuideOverlay {
                 false
             }
         }
-
+ 
         dialog.setCanceledOnTouchOutside(false)
         dialog.setCancelable(false)
-
+ 
         dialog.setOnDismissListener {
             if (activeDialog == dialog) {
                 activeDialog = null
             }
         }
-
+ 
         dialog.show()
     }
-
+ 
     private fun hideKeyboard(context: Context, view: View) {
         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(view.windowToken, 0)
     }
-
+ 
     private fun initTTS(context: Context) {
-    if (ttsEngine != null) return
-    ttsEngine = TextToSpeech(context, { status ->
-        if (status == TextToSpeech.SUCCESS) {
-            // Hindi locale try karo pehle
-            val hindiLocale = Locale("hi", "IN")
-            val hindiResult = ttsEngine?.isLanguageAvailable(hindiLocale)
-            if (hindiResult == TextToSpeech.LANG_AVAILABLE ||
-                hindiResult == TextToSpeech.LANG_COUNTRY_AVAILABLE) {
-                ttsEngine?.language = hindiLocale
-            } else {
-                // Fallback English India
-                ttsEngine?.language = Locale("en", "IN")
+        if (ttsEngine != null) return
+        ttsEngine = TextToSpeech(context, { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val hindiLocale = Locale("hi", "IN")
+                val hindiResult = ttsEngine?.isLanguageAvailable(hindiLocale)
+                if (hindiResult == TextToSpeech.LANG_AVAILABLE ||
+                    hindiResult == TextToSpeech.LANG_COUNTRY_AVAILABLE) {
+                    ttsEngine?.language = hindiLocale
+                } else {
+                    ttsEngine?.language = Locale("en", "IN")
+                }
+                ttsEngine?.setSpeechRate(0.88f)
+                ttsEngine?.setPitch(1.05f)
             }
-            ttsEngine?.setSpeechRate(0.88f)
-            ttsEngine?.setPitch(1.05f)
-        }
-    }, "com.google.android.tts")
-}
-
+        }, "com.google.android.tts")
+    }
+ 
     private fun speakText(text: String) {
         val cleanSpeech = text
-            // Markdown hatao
             .replace(Regex("\\*{1,3}"), "")
             .replace(Regex("#{1,6}\\s?"), "")
             .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
-            // Arrow aur brackets hatao
             .replace("➤", "")
             .replace(Regex("[\\[\\]\\(\\)]"), "")
-            // Emojis hatao
             .replace(Regex("[\uD83C-\uDBFF\uDC00-\uDFFF]+"), "")
             .replace(Regex("[\u2600-\u27BF]"), "")
             .replace(Regex("[\u2300-\u23FF]"), "")
-            // Numbers ke saath dot remove karo (1. 2. 3.)
             .replace(Regex("(\\d+)\\.\\s"), "$1 ")
-            // VM aur naam sahi pronounce ho
             .replace("VM", "V M")
             .replace("Vikash K. Ray", "Vikash Kay Ray")
             .replace("Vikash K Ray", "Vikash Kay Ray")
-            // Extra spaces
             .replace(Regex("\\s+"), " ")
             .trim()
-
+ 
         if (cleanSpeech.isEmpty()) return
-
+ 
         val segments = splitByScript(cleanSpeech)
         if (segments.isEmpty()) return
-
+ 
         val params = Bundle()
         params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
-
+ 
         segments.forEachIndexed { index, segment ->
             val trimmed = segment.text.trim()
             if (trimmed.isEmpty()) return@forEachIndexed
@@ -485,28 +486,28 @@ object GuideOverlay {
             ttsEngine?.speak(trimmed, queueMode, params, "GUIDE_AI_TTS_$index")
         }
     }
-
+ 
     private data class TextSegment(val text: String, val isDevanagari: Boolean)
-
+ 
     private fun splitByScript(text: String): List<TextSegment> {
         val segments = mutableListOf<TextSegment>()
         if (text.isEmpty()) return segments
-
+ 
         fun isDevanagariChar(c: Char) = c in '\u0900'..'\u097F'
         fun isLatinLetter(c: Char) = c.isLetter() && !isDevanagariChar(c)
-
+ 
         val sb = StringBuilder()
         var currentIsDevanagari: Boolean? = null
-
+ 
         for (c in text) {
             val charIsDev = isDevanagariChar(c)
             val charIsLatinLetter = isLatinLetter(c)
-
+ 
             if (!charIsDev && !charIsLatinLetter) {
                 sb.append(c)
                 continue
             }
-
+ 
             when {
                 currentIsDevanagari == null -> {
                     currentIsDevanagari = charIsDev
@@ -521,14 +522,14 @@ object GuideOverlay {
                 }
             }
         }
-
+ 
         if (sb.isNotEmpty()) {
             segments.add(TextSegment(sb.toString(), currentIsDevanagari ?: false))
         }
-
+ 
         return segments
     }
-
+ 
     private fun buildFormattedSpannable(rawText: String): SpannableString {
         val fullText = ARROW_PREFIX + rawText
         val spannable = SpannableString(fullText)
@@ -578,4 +579,3 @@ object GuideOverlay {
         windowManager = null
     }
 }
- 
