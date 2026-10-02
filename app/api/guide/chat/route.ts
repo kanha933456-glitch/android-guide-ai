@@ -28,7 +28,7 @@ FORMATTING RULES:
 - No markdown: no **, no ##, no ***, no bullet points, no numbered lists like 1. 2. 3.
 - No emojis in response — not even smiley faces.
 - Plain text only — clean sentences.
-- Keep response short medium high and direct.`,
+- Keep response short medium large and direct.`,
       input: [
         { type: "text", text: promptText },
         {
@@ -39,15 +39,16 @@ FORMATTING RULES:
       ],
       generation_config: {
         thinking_level: "low"
-      }
+      },
+      stream: true
     };
 
     if (previousInteractionId && previousInteractionId.trim().length > 0) {
       requestBody.previous_interaction_id = previousInteractionId;
     }
 
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/interactions",
+    const geminiResponse = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/interactions?alt=sse",
       {
         method: "POST",
         headers: {
@@ -58,25 +59,93 @@ FORMATTING RULES:
       }
     );
 
-    const data = await response.json();
-
-    if (!response.ok) {
+    if (!geminiResponse.ok) {
+      const errData = await geminiResponse.json();
       return Response.json({
         error: 'GEMINI_ERROR',
-        message: data?.error?.message || 'Gemini API error'
-      }, { status: response.status });
+        message: errData?.error?.message || 'Gemini API error'
+      }, { status: geminiResponse.status });
     }
 
-    const steps = data.steps || [];
-    const modelOutput = steps.find((s: any) => s.type === "model_output");
-    const guidance = modelOutput?.content?.find((c: any) => c.type === "text")?.text || "";
-    const interactionId = data.id || "";
+    // SSE stream Android ko forward karo
+    const encoder = new TextEncoder();
+    let interactionId = "";
+    let fullText = "";
 
-    if (!guidance) {
-      return Response.json({ error: 'EMPTY_RESPONSE', message: 'Gemini returned empty response' }, { status: 500 });
-    }
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = geminiResponse.body?.getReader();
+        if (!reader) {
+          controller.close();
+          return;
+        }
 
-    return Response.json({ guidance, interactionId });
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr || jsonStr === "[DONE]") continue;
+
+              try {
+                const event = JSON.parse(jsonStr);
+
+                // Interaction ID save karo
+                if (event.id && !interactionId) {
+                  interactionId = event.id;
+                }
+
+                // Text chunk nikalo
+                const steps = event.steps || [];
+                for (const step of steps) {
+                  if (step.type === "step.delta" || step.type === "model_output") {
+                    const content = step.content || step.delta?.content || [];
+                    for (const c of content) {
+                      if (c.type === "text" && c.text) {
+                        fullText += c.text;
+                        // Chunk Android ko bhejo
+                        const chunk = JSON.stringify({ chunk: c.text, interactionId }) + "\n";
+                        controller.enqueue(encoder.encode(chunk));
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                // Invalid JSON skip karo
+              }
+            }
+          }
+
+          // Stream khatam — final signal bhejo
+          const done = JSON.stringify({ done: true, interactionId, fullText }) + "\n";
+          controller.enqueue(encoder.encode(done));
+
+        } catch (e) {
+          controller.error(e);
+        } finally {
+          reader.releaseLock();
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-cache"
+      }
+    });
 
   } catch (error: any) {
     console.error("Chat Processing Error:", error);
