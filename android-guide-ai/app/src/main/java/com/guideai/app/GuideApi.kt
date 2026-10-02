@@ -3,19 +3,25 @@ package com.guideai.app
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
 object GuideApi {
 
-    // Google server-side history ke liye sirf ID store karo
     private var previousInteractionId: String = ""
 
     fun clearHistory() {
         previousInteractionId = ""
     }
 
-    suspend fun explainVision(question: String, image: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun explainVision(
+        question: String,
+        image: String,
+        onChunk: (String) -> Unit = {}
+    ): Result<String> = withContext(Dispatchers.IO) {
+
         val endpoint = BuildConfig.GUIDE_API_URL.replace("/api/guide", "/api/guide/chat")
 
         if (endpoint.isBlank()) {
@@ -31,15 +37,15 @@ object GuideApi {
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/x-ndjson")
                 connectTimeout = 15_000
-                readTimeout = 30_000
+                readTimeout = 60_000
                 doOutput = true
             }
 
             val jsonPayload = JSONObject().apply {
                 put("image", formattedImage)
                 put("question", question)
-                // Pichla interaction ID bhejo — Google history yaad rakhega
                 put("previousInteractionId", previousInteractionId)
             }.toString()
 
@@ -48,29 +54,48 @@ object GuideApi {
             }
 
             val responseCode = connection.responseCode
-            val responseStream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
-            val responseText = responseStream?.bufferedReader()?.use { it.readText() } ?: ""
 
             if (responseCode !in 200..299) {
-                val errJson = runCatching { JSONObject(responseText) }.getOrNull()
-                val serverMsg = errJson?.optString("message") ?: responseText
+                val errorText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                val errJson = runCatching { JSONObject(errorText) }.getOrNull()
+                val serverMsg = errJson?.optString("message") ?: errorText
                 error("HTTP $responseCode: $serverMsg")
             }
 
-            val jsonResponse = JSONObject(responseText)
-            val resultText = jsonResponse.optString("guidance")
-            val newInteractionId = jsonResponse.optString("interactionId")
+            // Streaming response read karo line by line
+            val reader = BufferedReader(InputStreamReader(connection.inputStream))
+            var fullText = ""
+            var newInteractionId = ""
 
-            if (resultText.isBlank()) {
-                error("Server returned empty guidance")
-            }
+            reader.use { br ->
+                var line: String?
+                while (br.readLine().also { line = it } != null) {
+                    val trimmed = line?.trim() ?: continue
+                    if (trimmed.isEmpty()) continue
 
-            // Naya interaction ID save karo agle turn ke liye
-            if (newInteractionId.isNotBlank()) {
-                previousInteractionId = newInteractionId
-            }
+                    try {
+                        val json = JSONObject(trimmed)
 
-            resultText
-        }
-    }
-}
+                        when {
+                            // Chunk aaya — UI update karo
+                            json.has("chunk") -> {
+                                val chunk = json.getString("chunk")
+                                if (chunk.isNotEmpty()) {
+                                    fullText += chunk
+                                    onChunk(fullText) // Har chunk par UI update
+                                }
+                                if (json.has("interactionId")) {
+                                    val id = json.optString("interactionId")
+                                    if (id.isNotBlank()) newInteractionId = id
+                                }
+                            }
+                            // Stream khatam
+                            json.optBoolean("done") -> {
+                                val finalText = json.optString("fullText")
+                                if (finalText.isNotBlank()) fullText = finalText
+                                val id = json.optString("interactionId")
+                                if (id.isNotBlank()) newInteractionId = id
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Invalid JSON skip
