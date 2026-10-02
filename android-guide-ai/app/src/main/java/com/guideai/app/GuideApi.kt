@@ -31,7 +31,7 @@ object GuideApi {
             return@withContext Result.failure(Exception("Image frame is empty"))
         }
 
-        runCatching {
+        val result: Result<String> = runCatching {
             val formattedImage = if (image.startsWith("data:image")) image else "data:image/jpeg;base64,$image"
 
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
@@ -62,7 +62,6 @@ object GuideApi {
                 error("HTTP $responseCode: $serverMsg")
             }
 
-            // Streaming response read karo line by line
             val reader = BufferedReader(InputStreamReader(connection.inputStream))
             var fullText = ""
             var newInteractionId = ""
@@ -75,21 +74,16 @@ object GuideApi {
 
                     try {
                         val json = JSONObject(trimmed)
-
                         when {
-                            // Chunk aaya — UI update karo
                             json.has("chunk") -> {
                                 val chunk = json.getString("chunk")
                                 if (chunk.isNotEmpty()) {
                                     fullText += chunk
-                                    onChunk(fullText) // Har chunk par UI update
+                                    onChunk(fullText)
                                 }
-                                if (json.has("interactionId")) {
-                                    val id = json.optString("interactionId")
-                                    if (id.isNotBlank()) newInteractionId = id
-                                }
+                                val id = json.optString("interactionId")
+                                if (id.isNotBlank()) newInteractionId = id
                             }
-                            // Stream khatam
                             json.optBoolean("done") -> {
                                 val finalText = json.optString("fullText")
                                 if (finalText.isNotBlank()) fullText = finalText
@@ -98,4 +92,22 @@ object GuideApi {
                             }
                         }
                     } catch (e: Exception) {
-                        // Invalid JSON skip
+                        // skip
+                    }
+                }
+            }
+
+            if (fullText.isBlank()) {
+                error("Server returned empty guidance")
+            }
+
+            if (newInteractionId.isNotBlank()) {
+                previousInteractionId = newInteractionId
+            }
+
+            fullText
+        }
+
+        result
+    }
+}
