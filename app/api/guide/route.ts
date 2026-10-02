@@ -15,17 +15,9 @@ export async function POST(req: Request) {
       ? question
       : "Detect the main item, question, or task on the background screen and provide direct, actionable help or the answer.";
 
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/interactions",
-      {
-        method: "POST",
-        headers: {
-          "x-goog-api-key": process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "gemini-3.5-flash-lite",
-          system_instruction: `You are Guide AI, a screen assistant app built by VM (Vikash K. Ray), a young developer from India. Guide AI was developed on 4th September 2026.
+    const requestBody = {
+      model: "gemini-3.5-flash-lite",
+      system_instruction: `You are Guide AI, a screen assistant app built by VM (Vikash K. Ray), a young developer from India. Guide AI was developed on 4th September 2026.
 
 IDENTITY RULES:
 - You are Guide AI — NOT Gemini, NOT Google Assistant, NOT any other AI.
@@ -36,46 +28,101 @@ FORMATTING RULES:
 - No markdown: no **, no ##, no ***, no bullet points, no numbered lists like 1. 2. 3.
 - No emojis in response — not even smiley faces.
 - Plain text only — clean sentences.
-- Keep response short medium high and direct.`,
-          input: [
-            { type: "text", text: promptText },
-            {
-              type: "image",
-              data: cleanBase64,
-              mime_type: "image/jpeg"
-            }
-          ],
-          generation_config: {
-            thinking_level: "low"
-          }
-        })
+- Keep response short medium large and direct.`,
+      input: [
+        { type: "text", text: promptText },
+        { type: "image", data: cleanBase64, mime_type: "image/jpeg" }
+      ],
+      generation_config: { thinking_level: "low" },
+      stream: true
+    };
+
+    const geminiResponse = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/interactions?alt=sse",
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
       }
     );
 
-    const data = await response.json();
-
-    if (!response.ok) {
+    if (!geminiResponse.ok) {
+      const errData = await geminiResponse.json();
       return Response.json({
         error: 'GEMINI_ERROR',
-        message: data?.error?.message || 'Gemini API error'
-      }, { status: response.status });
+        message: errData?.error?.message || 'Gemini API error'
+      }, { status: geminiResponse.status });
     }
 
-    const steps = data.steps || [];
-    const modelOutput = steps.find((s: any) => s.type === "model_output");
-    const guidance = modelOutput?.content?.find((c: any) => c.type === "text")?.text || "";
+    const encoder = new TextEncoder();
+    let fullText = "";
 
-    if (!guidance) {
-      return Response.json({ error: 'EMPTY_RESPONSE', message: 'Gemini returned empty response' }, { status: 500 });
-    }
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = geminiResponse.body?.getReader();
+        if (!reader) { controller.close(); return; }
 
-    return Response.json({ guidance });
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr || jsonStr === "[DONE]") continue;
+
+              try {
+                const event = JSON.parse(jsonStr);
+                const steps = event.steps || [];
+                for (const step of steps) {
+                  const content = step.content || step.delta?.content || [];
+                  for (const c of content) {
+                    if (c.type === "text" && c.text) {
+                      fullText += c.text;
+                      const chunk = JSON.stringify({ chunk: c.text }) + "\n";
+                      controller.enqueue(encoder.encode(chunk));
+                    }
+                  }
+                }
+              } catch (e) {}
+            }
+          }
+
+          const done = JSON.stringify({ done: true, fullText }) + "\n";
+          controller.enqueue(encoder.encode(done));
+
+        } catch (e) {
+          controller.error(e);
+        } finally {
+          reader.releaseLock();
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-cache"
+      }
+    });
 
   } catch (error: any) {
-    console.error("Guide Processing Error:", error);
     return Response.json({
       error: 'SERVER_EXCEPTION',
       message: error?.message || 'Unknown server error'
     }, { status: 500 });
   }
-}
+                    }
